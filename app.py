@@ -1606,9 +1606,21 @@ class Handler(BaseHTTPRequestHandler):
         global LAST_DATA
         if LAST_DATA is None:
             LAST_DATA = default_data()
-        if self.path == "/" or self.path.startswith("/?"):
+
+        # パスからクエリ文字列を除去
+        path = self.path.split("?")[0].rstrip("/") or "/"
+
+        if path == "/" or path == "":
             self.respond_html(render_index(LAST_DATA))
-        elif self.path == "/api/status":
+        elif path == "/healthz" or path == "/health":
+            # Renderヘルスチェック用
+            body = b"OK"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/api/status":
             body = json.dumps({"ok": True, "version": APP_VERSION, "feature": "AI相談入力欄 v1-3", "documents": DOC_TITLES}, ensure_ascii=False).encode("utf-8")
             self.send_response(200); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
         else:
@@ -1617,6 +1629,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         global LAST_DATA
         global LAST_CONSULT_HTML
+        # パスからクエリ文字列を除去
+        self.path = self.path.split("?")[0]
         if self.path == "/save_config":
             length = int(self.headers.get("Content-Length", "0"))
             raw_bytes = self.rfile.read(length)
