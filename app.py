@@ -1455,7 +1455,7 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
     seal = cfg.get("seal", {})
     seal_checked = "checked" if seal.get("enabled", True) else ""
     t2_note = "ReportLab純正・WeasyPrint不要・Render対応"
-    return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>請求書・発注書作成システム v1-4</title>
+    return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>帳票作成システム v16</title>
 <style>body{{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f7;margin:0;color:#222}}header{{background:#1A2B4C;color:#fff;padding:18px 28px;border-bottom:4px solid #C5A059}}main{{max-width:1100px;margin:24px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #ddd;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}}h1{{font-size:22px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}label{{font-weight:600;display:block;margin:10px 0 5px}}input,select,textarea{{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbb;border-radius:10px;font-size:15px}}textarea{{min-height:120px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.items{{width:100%;border-collapse:collapse;margin-top:8px}}.items th,.items td{{border:1px solid #ddd;padding:6px;font-size:13px}}.items input{{padding:7px;font-size:13px}}.sub{{color:#666;font-size:13px}}.flash{{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:10px;margin-bottom:14px;white-space:pre-wrap}}.flash-ok{{background:#eef7ee;border:1px solid #b7dfb7;padding:12px;border-radius:10px;margin-bottom:14px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.pill{{background:#eee;padding:6px 10px;border-radius:999px;font-size:12px}}pre{{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px}}.consult-box{{border:1px solid #d8d8d8;background:#fbfbfb;border-radius:12px;padding:14px;margin-top:14px}}.consult-table{{width:100%;border-collapse:collapse;margin:10px 0}}.consult-table th,.consult-table td{{border:1px solid #ddd;padding:8px;text-align:left}}.consult-table th{{background:#f0f0f0}}.right{{text-align:right!important}}
 .btn-row{{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}}
 .btn-block{{display:flex;flex-direction:column;gap:6px}}
@@ -1467,7 +1467,7 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 .btn-note{{font-size:11px;color:#888;padding-left:4px}}
 button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:700;cursor:pointer}}
 </style></head><body>
-<header><h1>請求書・発注書作成システム v1-4</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
+<header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
 <div class="card"><h2>AIおまかせ入力欄・相談モード</h2><p class="sub">チャッピーに話すように相談できます。いきなりPDFにせず「相談回答 → OK後に書類データ化 → 固定テンプレートPDF」の流れで進みます。</p>
 <form method="post" action="/consult" enctype="multipart/form-data"><textarea name="prompt" placeholder="例：福祉用品で品目何があるかな？金額はいくらくらいが不自然じゃない？&#10;例：システム開発なら作業報告書や見積書、仕様書も必要じゃない？"></textarea><label>参考ファイルを添付（PDF・画像・Excelなど）</label><input type="file" name="upload_file" multiple><br><br><button type="submit">まず相談する</button></form>
@@ -1775,7 +1775,7 @@ def run() -> None:
     host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
     server = HTTPServer((host, port), Handler)
     print("=" * 55)
-    print("  請求書・発注書作成システム v1-5")
+    print("  帳票作成システム v16")
     print("  テンプレート2：ReportLab ネイビー×ゴールド版")
     print("  WeasyPrint不要 / Render対応")
     print(f"  Open: http://{host}:{port}")
