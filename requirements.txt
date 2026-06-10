@@ -1,0 +1,4 @@
+# 請求書・発注書作成システム v1-5
+# WeasyPrint不要・Render無料プラン対応
+
+reportlab==4.2.2

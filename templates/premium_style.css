@@ -1,0 +1,327 @@
+/* ============================================================
+   テンプレート2：ネイビー×ゴールド高級版
+   WeasyPrint対応 / A4完全固定レイアウト
+   
+   ★ WeasyPrintのレイアウト原則：
+      body に width:210mm を指定しない。
+      @page { margin: 20mm; } でページ余白を取り、
+      body の幅はページの内側（170mm）に自動的に収まる。
+      これが「右側はみ出し」を防ぐ唯一確実な方法。
+   ============================================================ */
+
+/* ---- ページ設定（WeasyPrint はここで余白を制御する） ---- */
+@page {
+    size: A4 portrait;
+    margin: 18mm 20mm 18mm 20mm; /* 上 右 下 左 */
+}
+
+:root {
+    --navy:       #1A2B4C;
+    --gold:       #C5A059;
+    --dark-gold:  #A68548;
+    --light-gray: #F9F9F9;
+    --border-gray:#E0E0E0;
+    --text-main:  #333333;
+    --text-sub:   #666666;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* body は幅指定しない。@pageのmarginが余白を保証する */
+body {
+    font-family: 'Yu Gothic', 'YuGothic', 'Hiragino Kaku Gothic ProN',
+                 'Noto Sans CJK JP', 'Noto Sans JP', 'Meiryo', 'MS Gothic', sans-serif;
+    color: var(--text-main);
+    line-height: 1.6;
+    background-color: white;
+    font-size: 12px;
+    /* width / padding / margin は指定しない → @page margin に委ねる */
+}
+
+/* ---- ヘッダー ---- */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    border-bottom: 3px solid var(--navy);
+    padding-bottom: 10px;
+    width: 100%;
+}
+
+.title-container h1 {
+    font-size: 28px;
+    color: var(--navy);
+    letter-spacing: 0.2em;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.meta-info {
+    text-align: right;
+    font-size: 11px;
+    color: var(--text-sub);
+    line-height: 1.8;
+}
+
+/* ---- 宛先・発行元ブロック ---- */
+.parties {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    width: 100%;
+    gap: 0;
+}
+
+.to-info {
+    width: 54%;
+    flex-shrink: 0;
+}
+
+.to-name {
+    font-size: 16px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--text-main);
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+    word-break: break-all; /* 長い社名も折り返す */
+}
+
+.to-name .honorific {
+    font-size: 12px;
+    margin-left: 6px;
+}
+
+.subject {
+    margin-top: 12px;
+    font-size: 12px;
+}
+
+.subject-label {
+    color: var(--text-sub);
+    font-size: 11px;
+}
+
+.subject-text {
+    font-weight: 500;
+    border-bottom: 1px solid var(--border-gray);
+    display: inline-block;
+    min-width: 160px;
+    max-width: 100%;
+    word-break: break-all;
+}
+
+/* 発行元ブロック：幅を明示・overflow隠す */
+.from-info {
+    width: 43%;
+    flex-shrink: 0;
+    text-align: right;
+    position: relative;
+    overflow: hidden;           /* ← はみ出し防止 */
+    padding-bottom: 65px;       /* 角印スペース確保 */
+}
+
+.from-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.from-details {
+    font-size: 9.5px;
+    color: var(--text-sub);
+    line-height: 1.7;
+    word-break: break-all;
+}
+
+/* 角印エリア：発行元右下に固定 */
+.stamp-space {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 52px;
+    height: 52px;
+    border: 1px dashed var(--border-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--border-gray);
+}
+
+.stamp-space img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.stamp-space.has-image {
+    border: none;
+}
+
+/* ---- ご請求金額ボックス ---- */
+.total-box {
+    background-color: var(--navy);
+    color: white;
+    padding: 13px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+    border-left: 6px solid var(--gold);
+    width: 100%;
+    overflow: hidden;           /* ← はみ出し防止 */
+}
+
+.total-label {
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.total-amount {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    white-space: nowrap;        /* ← 折り返し防止 */
+}
+
+.total-amount .tax-note {
+    font-size: 13px;
+    margin-left: 4px;
+    font-weight: 400;
+}
+
+.condition-line {
+    font-size: 10px;
+    margin-top: 4px;
+    color: rgba(255, 255, 255, 0.85);
+    word-break: break-all;
+}
+
+/* ---- 品目テーブル ---- */
+.items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    table-layout: fixed;        /* ← 列幅を固定（はみ出し防止の鍵） */
+}
+
+.items-table th {
+    background-color: var(--light-gray);
+    border-bottom: 2px solid var(--navy);
+    padding: 8px 6px;
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--navy);
+    font-weight: 700;
+    overflow: hidden;
+}
+
+.items-table td {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border-gray);
+    font-size: 11px;
+    vertical-align: middle;
+    overflow: hidden;
+    word-break: break-all;      /* ← セル内折り返し */
+}
+
+/* 空行 */
+.items-table tr.empty-row td {
+    color: transparent;
+    border-bottom: 1px solid #f0f0f0;
+    height: 26px;
+}
+
+/* 列幅（合計100%） */
+.col-no     { width: 5%;  text-align: center; }
+.col-desc   { width: 49%; text-align: left; }
+.col-qty    { width: 8%;  text-align: center; }
+.col-utype  { width: 6%;  text-align: center; }
+.col-unit   { width: 16%; text-align: right; }
+.col-amount { width: 16%; text-align: right; font-weight: 500; }
+
+/* ---- 小計・消費税・合計 ---- */
+.calc-summary {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+.calc-table {
+    width: 40%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.calc-table td {
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.calc-label {
+    text-align: left;
+    color: var(--text-sub);
+    width: 55%;
+}
+
+.calc-value {
+    text-align: right;
+    width: 45%;
+    white-space: nowrap;
+}
+
+.calc-total-row {
+    border-top: 2px solid var(--gold);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--navy);
+}
+
+/* ---- フッター（振込先・備考） ---- */
+.footer-info {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+}
+
+.bank-info,
+.notes-info {
+    flex: 1;
+    min-width: 0;               /* ← flex子要素のはみ出し防止 */
+    overflow: hidden;
+}
+
+.footer-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--navy);
+    border-left: 3px solid var(--gold);
+    padding-left: 6px;
+    margin-bottom: 7px;
+}
+
+.footer-content {
+    font-size: 9.5px;
+    color: var(--text-sub);
+    background-color: var(--light-gray);
+    padding: 10px;
+    min-height: 64px;
+    line-height: 1.7;
+    word-break: break-all;
+}
+
+/* ---- 印刷時も同じレイアウト ---- */
+@media print {
+    .stamp-space {
+        border: 1px solid var(--border-gray);
+    }
+}

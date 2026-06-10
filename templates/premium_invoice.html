@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>請求書</title>
+    <style>
+%%STYLE%%
+    </style>
+</head>
+<body>
+
+    <!-- ヘッダー：タイトル・発行日・番号 -->
+    <div class="header">
+        <div class="title-container">
+            <h1>請求書</h1>
+        </div>
+        <div class="meta-info">
+            <p>発行日：%%ISSUE_DATE%%</p>
+            <p>請求書番号：%%DOC_NO%%</p>
+        </div>
+    </div>
+
+    <!-- 宛先（左）・発行元＋角印（右） -->
+    <div class="parties">
+        <div class="to-info">
+            <div class="to-name">%%CLIENT%%<span class="honorific"></span></div>
+            <div class="subject">
+                <span class="subject-label">件名：</span>
+                <span class="subject-text">%%SUBJECT%%</span>
+            </div>
+        </div>
+        <div class="from-info">
+            <div class="from-name">%%ISSUER_COMPANY%%</div>
+            <div class="from-details">
+                %%ISSUER_POSTAL%%<br>
+                %%ISSUER_ADDRESS%%<br>
+                %%ISSUER_TEL%%<br>
+                %%ISSUER_EMAIL_LINE%%
+                %%ISSUER_INVOICE_LINE%%
+            </div>
+            %%STAMP_HTML%%
+        </div>
+    </div>
+
+    <!-- ご請求金額ボックス -->
+    <div class="total-box">
+        <div>
+            <span class="total-label">ご請求金額（税込）</span>
+            <div class="condition-line">お支払期限：%%DUE_DATE%%　支払方法：%%PAYMENT_METHOD%%</div>
+        </div>
+        <div class="total-amount">%%TOTAL_AMOUNT%%<span class="tax-note">（税込）</span></div>
+    </div>
+
+    <!-- 品目テーブル -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th class="col-no">No</th>
+                <th class="col-desc">品目 / 内容</th>
+                <th class="col-qty">数量</th>
+                <th class="col-utype">単位</th>
+                <th class="col-unit">単価</th>
+                <th class="col-amount">金額</th>
+            </tr>
+        </thead>
+        <tbody>
+%%ITEM_ROWS%%
+        </tbody>
+    </table>
+
+    <!-- 小計・税・合計 -->
+    <div class="calc-summary">
+        <table class="calc-table">
+            <tr>
+                <td class="calc-label">小計</td>
+                <td class="calc-value">%%SUBTOTAL%%</td>
+            </tr>
+            <tr>
+                <td class="calc-label">消費税（%%TAX_RATE%%%）</td>
+                <td class="calc-value">%%TAX_AMOUNT%%</td>
+            </tr>
+            <tr class="calc-total-row">
+                <td class="calc-label">合計</td>
+                <td class="calc-value">%%TOTAL%%</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- フッター：振込先・備考 -->
+    <div class="footer-info">
+        <div class="bank-info">
+            <div class="footer-title">お振込先</div>
+            <div class="footer-content">%%BANK_INFO%%</div>
+        </div>
+        <div class="notes-info">
+            <div class="footer-title">備考</div>
+            <div class="footer-content">%%NOTES%%</div>
+        </div>
+    </div>
+
+</body>
+</html>

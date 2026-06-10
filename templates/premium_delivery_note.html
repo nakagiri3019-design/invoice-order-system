@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>納品書</title>
+    <style>
+%%STYLE%%
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="title-container">
+            <h1>納品書</h1>
+        </div>
+        <div class="meta-info">
+            <p>発行日：%%ISSUE_DATE%%</p>
+            <p>納品書番号：%%DOC_NO%%</p>
+        </div>
+    </div>
+
+    <div class="parties">
+        <div class="to-info">
+            <div class="to-name">%%CLIENT%%<span class="honorific"></span></div>
+            <div class="subject">
+                <span class="subject-label">件名：</span>
+                <span class="subject-text">%%SUBJECT%%</span>
+            </div>
+        </div>
+        <div class="from-info">
+            <div class="from-name">%%ISSUER_COMPANY%%</div>
+            <div class="from-details">
+                %%ISSUER_POSTAL%%<br>
+                %%ISSUER_ADDRESS%%<br>
+                %%ISSUER_TEL%%<br>
+                %%ISSUER_EMAIL_LINE%%
+                %%ISSUER_INVOICE_LINE%%
+            </div>
+            %%STAMP_HTML%%
+        </div>
+    </div>
+
+    <!-- 納品情報ボックス -->
+    <div class="total-box">
+        <div>
+            <span class="total-label">納品日</span>
+            <div class="condition-line">納品場所：%%DELIVERY_PLACE%%</div>
+        </div>
+        <div class="total-amount" style="font-size:20px;">%%DELIVERY_DATE%%</div>
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th class="col-no">No</th>
+                <th class="col-desc">品目 / 内容</th>
+                <th class="col-qty">数量</th>
+                <th class="col-utype">単位</th>
+                <th class="col-unit">単価または備考</th>
+                <th class="col-amount">金額</th>
+            </tr>
+        </thead>
+        <tbody>
+%%ITEM_ROWS%%
+        </tbody>
+    </table>
+
+    <div class="calc-summary">
+        <table class="calc-table">
+%%DELIVERY_CALC_ROWS%%
+        </table>
+    </div>
+
+    <div class="footer-info">
+        <div class="bank-info">
+            <div class="footer-title">納品詳細</div>
+            <div class="footer-content">上記の通り納品いたしました。<br>内容をご確認いただき、受領確認をお願いいたします。</div>
+        </div>
+        <div class="notes-info">
+            <div class="footer-title">備考</div>
+            <div class="footer-content">%%NOTES%%</div>
+        </div>
+    </div>
+
+</body>
+</html>
