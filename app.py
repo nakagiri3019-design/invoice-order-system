@@ -24,10 +24,8 @@ APP_VERSION = "v1-5"
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-CONFIG_PATH = BASE_DIR / "config.json"
-STATIC_DIR = BASE_DIR / "static"
-STATIC_DIR.mkdir(exist_ok=True)
-SEAL_PATH = STATIC_DIR / "seal.png"
+CONFIG_PATH = OUTPUT_DIR / "config.json"
+SEAL_PATH = OUTPUT_DIR / "seal.png"
 
 # 金額表記ルール：￥だけ全角、数字・カンマは半角
 FULLWIDTH_YEN = "￥"
@@ -49,7 +47,7 @@ DEFAULT_CONFIG = {
         "account_no": "0000000",
         "account_name": "カ）アークラボ",
     },
-    "seal": {"enabled": True, "text": "角印", "image_path": "static/seal.png"},
+    "seal": {"enabled": True, "text": "角印", "image_path": "output/seal.png"},
 }
 
 DOC_TITLES = {"invoice": "請求書", "purchase_order": "発注書", "estimate": "見積書", "delivery": "納品書"}
@@ -1586,7 +1584,7 @@ def save_config_from_fields(fields: Dict[str, Dict[str, Any]]) -> Dict[str, Any]
         "account_name": get("bank_account_name"),
     }
     cfg.setdefault("seal", {})["enabled"] = "seal_enabled" in fields
-    cfg["seal"]["image_path"] = "static/seal.png"
+    cfg["seal"]["image_path"] = "output/seal.png"
     f = fields.get("seal_file")
     if f and f.get("filename") and f.get("data"):
         SEAL_PATH.write_bytes(f["data"])
