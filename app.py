@@ -71,6 +71,14 @@ FONT_MIN = "HeiseiMin-W3"   # タイトルのみ明朝（register_fonts()で確�
 LAST_DATA: Dict[str, Any] | None = None
 LAST_CONSULT_HTML: str = ""
 LAST_CONSULT_DATA: Dict[str, Any] = {}
+LAST_CONSULT_HISTORY: list = []
+FIELD_LABELS: Dict[str, str] = {
+    "client": "宛先",
+    "due_date": "支払期日",
+    "doc_no": "書類番号",
+    "items": "品目",
+    "subject": "件名",
+}
 
 
 def find_font_file(candidates: List[str]) -> str | None:
@@ -260,6 +268,11 @@ def calculate(items: List[Dict[str, Any]], tax_rate: int) -> Dict[str, int]:
     return {"subtotal": subtotal, "tax": tax, "total": subtotal + tax}
 
 
+def qty_fmt(qty) -> str:
+    q = float(qty) if qty not in (None, "") else 0
+    return str(int(q)) if q == int(q) else str(q)
+
+
 def wrap_text(c: canvas.Canvas, text: str, max_width: float, font: str, size: int) -> List[str]:
     lines: List[str] = []
     current = ""
@@ -395,7 +408,7 @@ def draw_pdf(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
         values = ["", "", "", "", "", ""]
         if i < len(items):
             item = items[i]
-            values = [str(i + 1), item.get("name", ""), str(item.get("qty", "")), item.get("unit", "式"), f"{int(item.get('unit_price') or 0):,}", f"{int(item.get('amount') or 0):,}"]
+            values = [str(i + 1), item.get("name", ""), qty_fmt(item.get("qty", 0)), item.get("unit", "式"), f"{int(item.get('unit_price') or 0):,}", f"{int(item.get('amount') or 0):,}"]
         for j, (val, cw) in enumerate(zip(values, col_widths)):
             c.rect(xx, yrow, cw, row_h, stroke=1, fill=0)
             if j == 1:
@@ -717,7 +730,7 @@ def draw_pdf_premium_rl(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
         vals = [
             str(i + 1),
             item.get("name", ""),
-            str(item.get("qty", "")),
+            qty_fmt(item.get("qty", 0)),
             item.get("unit", "式"),
             f"{FULLWIDTH_YEN}{int(item.get('unit_price') or 0):,}",
             f"{FULLWIDTH_YEN}{int(item.get('amount') or 0):,}",
@@ -1251,7 +1264,7 @@ def draw_pdf_template3(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
     for i, item in enumerate(items):
         if y - ROW_H < needed:
             break
-        vals = [str(i+1), item.get("name",""), str(item.get("qty","")),
+        vals = [str(i+1), item.get("name",""), qty_fmt(item.get("qty", 0)),
                 item.get("unit","式"),
                 fmt_yen(int(item.get("unit_price") or 0)),
                 fmt_yen(int(item.get("amount") or 0))]
@@ -1378,7 +1391,16 @@ def money_plain(n: int) -> str:
     return f"{int(n):,}円"
 
 
-def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def extract_file_content(filename: str, data: bytes) -> str | None:
+    """将来的なPDF/画像読み取り用スタブ。現在は未対応。"""
+    raise NotImplementedError
+
+
+def consult_ai(
+    text: str,
+    current_data: Dict[str, Any] | None = None,
+    conversation_history: list | None = None,
+) -> Dict[str, Any]:
     """会話型帳票作成エンジン。WebでもLINEでも同じ関数を使う。"""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -1396,9 +1418,26 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
         '"notes": "", "items": [{"name": "", "qty": 1, "unit": "式", "unit_price": 0}], '
         '"missing_fields": []}'
     )
+
+    # 振込先情報を確認
+    try:
+        cfg = load_config()
+        profiles = cfg.get("profiles", [])
+        bank = profiles[0].get("bank", {}) if profiles else {}
+        bank_registered = bool(bank.get("bank_name") and bank.get("account_no"))
+        bank_info = (
+            f"{bank.get('bank_name','')} {bank.get('branch','')} {bank.get('account_type','')} "
+            f"{bank.get('account_no','')} {bank.get('account_name','')}"
+            if bank_registered else "未登録"
+        )
+    except Exception:
+        bank_registered = False
+        bank_info = "未登録"
+
     system_prompt = (
         "あなたは請求書・発注書・見積書・納品書の作成を支援するAIアシスタントです。\n"
         f"今日の日付: {today}\n"
+        f"発行元の振込先: {bank_info}\n"
         "ユーザーの入力から帳票データを読み取り、必ず以下の形式で返答してください。\n\n"
         "---返答フォーマット---\n"
         "ユーザーへの返答文をここに書く。\n\n"
@@ -1407,7 +1446,8 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
         "---ここまで---\n\n"
         "doc_typeはinvoice/purchase_order/estimate/deliveryのいずれか。\n"
         "必須チェック: client（宛先）・items（品目と単価が1つ以上）・due_date（支払期日または納期）。\n"
-        "不足している場合はmissing_fieldsに項目名を入れ、ユーザーに質問してください。\n"
+        + ("振込先は登録済みのためmissing_fieldsにbank_infoを含めないこと。\n" if bank_registered else "")
+        + "不足している場合はmissing_fieldsに項目名を入れ、ユーザーに質問してください。\n"
         "doc_no・subject・notesは任意項目（なくてもready扱い）。\n"
         "発行日が未指定の場合は今日の日付を入れてください。\n"
         "日本語で回答してください。"
@@ -1415,13 +1455,21 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
     if current_data:
         system_prompt += "\n\n前回の帳票データ: " + json.dumps(current_data, ensure_ascii=False)
 
+    # マルチターン会話履歴を組み立て
+    messages: list = []
+    for turn in (conversation_history or []):
+        messages.append({"role": "user", "content": turn.get("user", "")})
+        if turn.get("assistant"):
+            messages.append({"role": "assistant", "content": turn["assistant"]})
+    messages.append({"role": "user", "content": text.strip()})
+
     try:
         client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=system_prompt,
-            messages=[{"role": "user", "content": text.strip()}],
+            messages=messages,
         )
         raw = message.content[0].text
 
@@ -1437,8 +1485,7 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
         # ユーザー表示テキスト（DOCUMENT_DATA行以降を除去）
         reply_text = re.sub(r'DOCUMENT_DATA:.*', '', raw, flags=re.DOTALL).strip()
 
-        missing = doc_data.get("missing_fields", [])
-        # 必須フィールドが揃っているか確認
+        missing = list(doc_data.get("missing_fields", []))
         items = doc_data.get("items", [])
         has_items = any(
             (it.get("name") or "").strip() and int(float(it.get("unit_price") or 0)) > 0
@@ -1446,15 +1493,16 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
         )
         if not missing:
             if not doc_data.get("client"):
-                missing.append("client（宛先）")
+                missing.append("client")
             if not has_items:
-                missing.append("items（品目・単価）")
+                missing.append("items")
             if not doc_data.get("due_date"):
-                missing.append("due_date（支払期日/納期）")
+                missing.append("due_date")
 
         status = "ready" if not missing else "incomplete"
         return {
             "reply_text": reply_text,
+            "raw_reply": raw,
             "doc_data": doc_data,
             "missing_fields": missing,
             "status": status,
@@ -1462,24 +1510,52 @@ def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[st
     except Exception as e:
         return {
             "reply_text": f"AI応答の取得に失敗しました：{e}",
+            "raw_reply": "",
             "doc_data": {},
             "missing_fields": [],
             "status": "error",
         }
 
 
+def _doc_summary_html(data: Dict[str, Any]) -> str:
+    """帳票データのサマリーHTMLを生成する。"""
+    if not data:
+        return ""
+    items = data.get("items", [])
+    totals = calculate(list(items), int(data.get("tax_rate", 10)))
+    doc_label = DOC_TITLES.get(data.get("doc_type", "invoice"), "書類")
+    rows = ""
+    for it in items:
+        if not (it.get("name") or "").strip():
+            continue
+        qty = qty_fmt(it.get("qty", 0))
+        price = int(it.get("unit_price") or 0)
+        amount = int(it.get("amount") or 0)
+        rows += f"<tr><td>{esc(it.get('name',''))}</td><td class='right'>{qty}{esc(it.get('unit','式'))}</td><td class='right'>{price:,}</td><td class='right'>{amount:,}</td></tr>"
+    if not rows:
+        return ""
+    return f"""<div style="margin-top:12px;border-top:1px solid #ddd;padding-top:10px">
+<table class="consult-table">
+<tr><th colspan="4">{esc(doc_label)}　宛先: {esc(data.get('client','—'))}　発行日: {esc(data.get('issue_date',''))}　支払期日: {esc(data.get('due_date','—'))}</th></tr>
+<tr><th>品目</th><th class="right">数量</th><th class="right">単価</th><th class="right">金額</th></tr>
+{rows}
+<tr><td colspan="3" class="right"><b>小計</b></td><td class="right">{totals['subtotal']:,}</td></tr>
+<tr><td colspan="3" class="right">消費税（{data.get('tax_rate',10)}%）</td><td class="right">{totals['tax']:,}</td></tr>
+<tr><td colspan="3" class="right"><b>合計</b></td><td class="right"><b>{totals['total']:,}</b></td></tr>
+</table></div>"""
+
+
 def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> str:
     global LAST_DATA, LAST_CONSULT_DATA
     filenames = filenames or []
-    file_note = ""
-    if filenames:
-        file_note = "<p><b>添付ファイル：</b>" + esc("、".join(filenames)) + "</p>"
 
     user_text = (prompt or "").strip()
+    file_warn = ""
     if filenames:
-        user_text += "\n\n添付ファイル: " + "、".join(filenames)
+        user_text += "\n\n添付ファイルあり: " + "、".join(filenames)
+        file_warn = "<p style='color:#888;font-size:13px'>（添付ファイルの内容は現在自動読み取り非対応です。内容を手動で入力欄に貼り付けてください）</p>"
 
-    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None)
+    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY)
 
     if result["doc_data"]:
         LAST_CONSULT_DATA = result["doc_data"]
@@ -1490,20 +1566,22 @@ def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> s
                 LAST_DATA[key] = val
 
     missing = result["missing_fields"]
+    missing_jp = [FIELD_LABELS.get(f, f) for f in missing]
     if result["status"] == "ready":
-        status_badge = '<span class="pill">✅ フォームに反映できます</span>'
+        status_badge = '<span class="pill" style="background:#d4edda;color:#155724">✅ フォームに反映できます</span>'
     elif result["status"] == "error":
         status_badge = ""
     else:
-        status_badge = '<span class="pill">不足項目：' + esc("、".join(missing)) + '</span>'
+        status_badge = '<span class="pill">不足項目：' + esc("、".join(missing_jp)) + '</span>'
 
     reply_html = html.escape(result["reply_text"], quote=False).replace("\n", "<br>")
+    summary = _doc_summary_html(LAST_DATA or {})
 
     return f"""<div class="consult-box">
-      <h3>AI相談回答</h3>
-      {file_note}
+      {file_warn}
       <div>{reply_html}</div>
-      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+      {summary}
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <form method="post" action="/use_consult_data" style="display:inline">
           <button type="submit">フォームに反映してPDF作成へ</button>
         </form>
@@ -1540,6 +1618,31 @@ def _profile_fields_html(p: Dict[str, Any]) -> str:
 <label><input type="checkbox" name="seal_enabled" value="1" {seal_checked} style="width:auto"> 角印を表示する</label>
 <label>角印画像（PNG/JPG）</label><input type="file" name="seal_file" accept="image/png,image/jpeg">
 <p class="sub">角印画像をアップロードすると、発行元付近の固定位置に配置されます。未アップロードの場合は仮の角印枠を表示します。</p>"""
+
+
+def _render_chat_history(history: list, last_html: str) -> str:
+    if not history and not last_html:
+        return ""
+    parts = []
+    for turn in history[:-1]:  # 最新ターンは last_html で表示するので除外
+        parts.append(
+            f'<div style="background:#f0f4ff;border-radius:8px;padding:10px 14px;margin-bottom:6px">'
+            f'<span style="font-weight:700;color:#1A2B4C">あなた：</span> {html.escape(turn.get("user",""), quote=False)}</div>'
+            f'<div style="background:#fbfbfb;border-radius:8px;padding:10px 14px;margin-bottom:10px;border:1px solid #e0e0e0">'
+            f'<span style="font-weight:700;color:#555">AI：</span> {html.escape(turn.get("assistant_text",""), quote=False).replace(chr(10),"<br>")}'
+            f'</div>'
+        )
+    if history:
+        last_turn = history[-1]
+        parts.append(
+            f'<div style="background:#f0f4ff;border-radius:8px;padding:10px 14px;margin-bottom:6px">'
+            f'<span style="font-weight:700;color:#1A2B4C">あなた：</span> {html.escape(last_turn.get("user",""), quote=False)}</div>'
+        )
+    if last_html:
+        parts.append(last_html)
+    if not parts:
+        return ""
+    return '<div style="max-height:500px;overflow-y:auto;margin-bottom:14px;padding-right:4px">' + "".join(parts) + "</div>"
 
 
 def render_index(data: Dict[str, Any], message: str = "") -> str:
@@ -1601,11 +1704,18 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 </style></head><body>
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
-<div class="card"><h2>AIおまかせ入力欄・相談モード</h2><p class="sub">チャッピーに話すように相談できます。いきなりPDFにせず「相談回答 → OK後に書類データ化 → 固定テンプレートPDF」の流れで進みます。</p>
-<form method="post" action="/consult" enctype="multipart/form-data"><textarea name="prompt" placeholder="例：福祉用品で品目何があるかな？金額はいくらくらいが不自然じゃない？&#10;例：システム開発なら作業報告書や見積書、仕様書も必要じゃない？"></textarea><label>参考ファイルを添付（PDF・画像・Excelなど）</label><input type="file" name="upload_file" multiple><br><br><button type="submit">まず相談する</button></form>
-<hr style="border:0;border-top:1px solid #eee;margin:18px 0">
-<form method="post" action="/guess"><textarea name="prompt" placeholder="例：先月と同じInterakt宛で、5月分、基本作業費110万円、追加費用151,800円、支払期日は6月末で請求書を作って"></textarea><br><br><button type="submit">相談せず書類データに整理</button></form>
-{LAST_CONSULT_HTML}</div>
+<div class="card"><h2>AI相談チャット</h2><p class="sub">話すように入力するだけで帳票データを作成できます。複数ターンの会話で情報を補完していきます。</p>
+{_render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)}
+<form method="post" action="/consult" enctype="multipart/form-data">
+<textarea name="prompt" rows="4" placeholder="例：ソラボルジュエリー宛に、5月分のデザイン費50万円で請求書を作りたい。支払期日は6月末。"></textarea>
+<label style="margin-top:8px">参考ファイルを添付（PDF・画像・Excelなど）</label>
+<input type="file" name="upload_file" multiple>
+<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+  <button type="submit">送信</button>
+  <form method="post" action="/use_consult_data" style="display:inline"><button type="submit" style="background:#2a6040">フォームに反映してPDF作成へ</button></form>
+  <form method="post" action="/reset_consult" style="display:inline"><button type="submit" style="background:#888">会話をリセット</button></form>
+</div>
+</form></div>
 <form method="post" action="/create_pdf1" class="card" id="main-form">
 <h2>固定テンプレートに流し込む</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
@@ -1753,8 +1863,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self) -> None:
-        global LAST_DATA
-        global LAST_CONSULT_HTML, LAST_CONSULT_DATA
+        global LAST_DATA, LAST_CONSULT_HTML, LAST_CONSULT_DATA, LAST_CONSULT_HISTORY
         # パスからクエリ文字列を除去
         self.path = self.path.split("?")[0]
         if self.path == "/save_config":
@@ -1780,17 +1889,34 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             raw_bytes = self.rfile.read(length)
             fields = parse_multipart(raw_bytes, self.headers.get("Content-Type", ""))
-            prompt = fields.get("prompt", {}).get("value", "")
-            filenames = [v.get("filename", "") for k, v in fields.items() if v.get("filename")]
+            prompt = fields.get("prompt", {}).get("value", "").strip()
+            filenames = [fv.get("filename", "") for fk, fv in fields.items() if fv.get("filename")]
+            if not prompt:
+                self.respond_html(render_index(LAST_DATA or default_data(), "入力が空です。テキストを入力してから送信してください。"))
+                return
             LAST_CONSULT_HTML = make_consultation_html(prompt, filenames)
+            # 会話履歴に今回のターンを追加（consult_aiが返したreply_textをassistant_textに保存）
+            result_reply = re.sub(r'<[^>]+>', '', LAST_CONSULT_HTML)  # HTMLタグ除去して保存
+            LAST_CONSULT_HISTORY.append({
+                "user": prompt,
+                "assistant": LAST_CONSULT_DATA.get("_raw_reply", ""),
+                "assistant_text": re.sub(r'DOCUMENT_DATA:.*', '', result_reply, flags=re.DOTALL).strip(),
+            })
             if LAST_DATA is None:
                 LAST_DATA = default_data()
-            self.respond_html(render_index(LAST_DATA, "AI相談回答を作成しました。"))
+            self.respond_html(render_index(LAST_DATA, ""))
             return
         if self.path == "/use_consult_data":
             if LAST_DATA is None:
                 LAST_DATA = default_data()
             self.respond_html(render_index(LAST_DATA, "書類データをフォームに反映しました。内容を確認してPDFを作成してください。"))
+            return
+        if self.path == "/reset_consult":
+            LAST_CONSULT_HISTORY = []
+            LAST_CONSULT_HTML = ""
+            LAST_CONSULT_DATA = {}
+            LAST_DATA = default_data()
+            self.respond_html(render_index(LAST_DATA, "会話をリセットしました。"))
             return
         if self.path == "/use_welfare_proposal":
             LAST_DATA = {
