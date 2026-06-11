@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anthropic
 import base64
 import html
 import json
@@ -1377,95 +1378,37 @@ def money_plain(n: int) -> str:
 
 
 def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> str:
-    """Local prototype consultation engine.
-    v1-3 deliberately does not call an external AI yet. It simulates the intended flow:
-    consult first, then let the user choose whether to convert to document data.
-    """
     filenames = filenames or []
-    p = prompt or ""
     file_note = ""
     if filenames:
         file_note = "<p><b>添付ファイル：</b>" + esc("、".join(filenames)) + "</p>"
 
-    if any(k in p for k in ["福祉", "介護", "おむつ", "衛生用品"]):
-        rows = [
-            ("大人用紙おむつ・尿取りパッド等 消耗品", 1280000),
-            ("使い捨て手袋・衛生用品一式", 760000),
-            ("清拭タオル・口腔ケア用品一式", 620000),
-            ("介護ベッド周辺用品・防水シーツ類", 980000),
-            ("車椅子クッション・移乗補助用品", 850000),
-            ("ポータブルトイレ関連消耗品", 520000),
-            ("介護施設向け衛生備品・消耗品一式", 1190000),
-        ]
-        subtotal = sum(x[1] for x in rows)
-        tax = int(round(subtotal * 0.1))
-        trs = "".join(f"<tr><td>{esc(name)}</td><td class='right'>{money_plain(amount)}</td></tr>" for name, amount in rows)
-        return f"""
-        <div class="consult-box">
-          <h3>相談回答：福祉用品の品目・金額内訳案</h3>
-          {file_note}
-          <table class="consult-table"><tr><th>品目</th><th>金額目安</th></tr>{trs}</table>
-          <p><b>合計：</b>{money_plain(subtotal)}<br><b>税込の場合：</b>{money_plain(subtotal + tax)}</p>
-          <p>請求書としては「介護施設向け衛生用品・福祉用品一式」として自然です。</p>
-          <p>ただし、数量や納品期間が全くないと高額に見えやすいため、「〇月分」「施設一括納品分」「消耗品一式」などを入れると自然です。</p>
-          <div class="row">
-            <form method="post" action="/use_welfare_proposal"><button type="submit">この内容で請求書データにする</button></form>
-            <span class="pill">まだPDFは作りません</span>
-            <span class="pill">OK後にデータ化</span>
-          </div>
-        </div>"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return f"""<div class="consult-box"><h3>相談回答</h3>{file_note}<p>AI相談機能を使用するには環境変数 ANTHROPIC_API_KEY の設定が必要です。</p></div>"""
 
-    if any(k in p for k in ["システム", "開発", "AI", "アプリ", "仕様書", "作業報告"]):
-        items = [
-            ("AIシステム開発支援業務", "メインの請求品目"),
-            ("Webアプリケーション設計・構築費", "画面・機能実装の説明に使いやすい"),
-            ("PDF自動生成機能開発費", "今回の書類作成システムと相性が良い"),
-            ("AI相談入力欄・データ整理機能開発費", "AI機能部分の品目として自然"),
-            ("運用保守・追加調整費", "月次や追加作業に使いやすい"),
-        ]
-        docs = [
-            ("見積書", "事前に金額を提示した証拠"),
-            ("発注書", "相手から正式に依頼された形"),
-            ("仕様書", "どんな機能を作るかの説明"),
-            ("作業報告書", "実際に行った作業内容の説明"),
-            ("納品書", "成果物を納品した証拠"),
-            ("請求書", "支払いを求める書類"),
-        ]
-        item_rows = "".join(f"<tr><td>{esc(a)}</td><td>{esc(b)}</td></tr>" for a,b in items)
-        doc_rows = "".join(f"<tr><td>{esc(a)}</td><td>{esc(b)}</td></tr>" for a,b in docs)
-        return f"""
-        <div class="consult-box">
-          <h3>相談回答：システム開発案件で使いやすい品目・関連書類</h3>
-          {file_note}
-          <p>システム開発案件なら、請求書だけでなく、必要に応じて見積書・発注書・仕様書・作業報告書・納品書も一緒に作れると自然です。</p>
-          <h4>品目候補</h4><table class="consult-table"><tr><th>品目</th><th>用途</th></tr>{item_rows}</table>
-          <h4>一緒に作れる関連書類</h4><table class="consult-table"><tr><th>書類</th><th>用途</th></tr>{doc_rows}</table>
-          <div class="row">
-            <form method="post" action="/use_system_dev_proposal"><button type="submit">システム開発の請求書データにする</button></form>
-            <span class="pill">請求書だけ</span><span class="pill">見積書も作れる</span><span class="pill">作業報告書は後続機能</span>
-          </div>
-        </div>"""
+    try:
+        user_content = (prompt or "").strip()
+        if filenames:
+            user_content += "\n\n添付ファイル: " + "、".join(filenames)
 
-    if any(k in p for k in ["見積", "発注", "納品", "請求"]):
-        return f"""
-        <div class="consult-box">
-          <h3>相談回答：書類作成の進め方</h3>
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system="あなたは請求書・発注書・見積書・納品書の作成を支援するアシスタントです。ユーザーの自然文入力から書類に必要な情報（宛先・品目・金額・発行日・支払期日など）を整理して提示してください。いきなりPDFを作らず、まず内容を確認・整理してください。日本語で回答してください。",
+            messages=[{"role": "user", "content": user_content}],
+        )
+        reply = message.content[0].text
+        reply_html = html.escape(reply, quote=False).replace("\n", "<br>")
+        return f"""<div class="consult-box">
+          <h3>AI相談回答</h3>
           {file_note}
-          <p>この内容は書類作成に進められます。ただし、いきなりPDFにはせず、まず書類データに整理して確認画面へ出します。</p>
-          <ul>
-            <li>宛先</li><li>件名</li><li>品目</li><li>金額</li><li>税額</li><li>支払期日・納期</li>
-          </ul>
-          <p>不足している項目だけ後で確認します。</p>
+          <p>{reply_html}</p>
+          <div class="row"><span class="pill">内容を確認してからPDF作成へ</span></div>
         </div>"""
-
-    return f"""
-    <div class="consult-box">
-      <h3>相談回答</h3>
-      {file_note}
-      <p>この入力欄では、請求書・発注書・見積書・納品書を作る前に相談できます。</p>
-      <p>たとえば「福祉用品で自然な品目を出して」「システム開発なら必要書類も提案して」「この内容で請求書にして」のように入力できます。</p>
-      <p>相談段階ではPDFを作らず、内容が決まってから固定テンプレートに流し込みます。</p>
-    </div>"""
+    except Exception as e:
+        return f"""<div class="consult-box"><h3>相談回答（エラー）</h3>{file_note}<p>AI応答の取得に失敗しました：{esc(str(e))}</p></div>"""
 
 def esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
