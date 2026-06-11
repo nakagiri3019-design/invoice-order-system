@@ -25,29 +25,34 @@ BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 CONFIG_PATH = OUTPUT_DIR / "config.json"
-SEAL_PATH = OUTPUT_DIR / "seal.png"
 
 # 金額表記ルール：￥だけ全角、数字・カンマは半角
 FULLWIDTH_YEN = "￥"
 
 DEFAULT_CONFIG = {
-    "issuer": {
-        "company": "株式会社アークラボ",
-        "representative": "代表取締役　中桐由美子",
-        "postal": "〒000-0000",
-        "address": "東京都墨田区吾妻橋1-2-5-404",
-        "tel": "TEL: ",
-        "email": "",
-        "invoice_no": "",
-    },
-    "bank": {
-        "bank_name": "〇〇銀行",
-        "branch": "〇〇支店",
-        "account_type": "普通",
-        "account_no": "0000000",
-        "account_name": "カ）アークラボ",
-    },
-    "seal": {"enabled": True, "text": "角印", "image_path": "output/seal.png"},
+    "profiles": [
+        {
+            "id": "default",
+            "name": "デフォルト",
+            "issuer": {
+                "company": "株式会社アークラボ",
+                "representative": "代表取締役　中桐由美子",
+                "postal": "〒000-0000",
+                "address": "東京都墨田区吾妻橋1-2-5-404",
+                "tel": "TEL: ",
+                "email": "",
+                "invoice_no": "",
+            },
+            "bank": {
+                "bank_name": "〇〇銀行",
+                "branch": "〇〇支店",
+                "account_type": "普通",
+                "account_no": "0000000",
+                "account_name": "カ）アークラボ",
+            },
+            "seal": {"enabled": True, "text": "角印", "image_path": "output/seal_default.png"},
+        }
+    ]
 }
 
 DOC_TITLES = {"invoice": "請求書", "purchase_order": "発注書", "estimate": "見積書", "delivery": "納品書"}
@@ -107,7 +112,37 @@ def register_fonts() -> None:
 def load_config() -> Dict[str, Any]:
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if "issuer" in cfg and "profiles" not in cfg:
+        cfg = {"profiles": [{"id": "default", "name": "デフォルト", "issuer": cfg.get("issuer", {}), "bank": cfg.get("bank", {}), "seal": cfg.get("seal", {})}]}
+        CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    return cfg
+
+
+def get_profile(cfg: Dict[str, Any], profile_id: str = "") -> Dict[str, Any]:
+    profiles = cfg.get("profiles", [])
+    if not profiles:
+        return DEFAULT_CONFIG["profiles"][0]
+    if profile_id:
+        for p in profiles:
+            if p.get("id") == profile_id:
+                return p
+    return profiles[0]
+
+
+def delete_profile(profile_id: str) -> Dict[str, Any]:
+    cfg = load_config()
+    profiles = cfg.get("profiles", [])
+    if len(profiles) <= 1:
+        return cfg
+    cfg["profiles"] = [p for p in profiles if p.get("id") != profile_id]
+    CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    return cfg
+
+
+def seal_path_for(profile: Dict[str, Any]) -> Path:
+    image_path = profile.get("seal", {}).get("image_path", "output/seal.png")
+    return BASE_DIR / image_path
 
 
 def yen(value: Any) -> str:
@@ -295,7 +330,8 @@ def draw_pdf(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
     if config.get("seal", {}).get("enabled", True):
         sx = w - margin_x - 25 * mm
         sy = iy - 20 * mm
-        seal_file = SEAL_PATH if SEAL_PATH.exists() else None
+        seal_path = seal_path_for(config)
+        seal_file = seal_path if seal_path.exists() else None
         if seal_file:
             try:
                 c.drawImage(ImageReader(str(seal_file)), sx, sy, 21 * mm, 21 * mm, mask="auto", preserveAspectRatio=True, anchor="c")
@@ -424,12 +460,12 @@ _TSUB  = colors.HexColor("#666666")
 _WHITE = colors.white
 
 
-def _t2_seal(c: canvas.Canvas, sx: float, sy: float, size: float = 16 * mm) -> None:
+def _t2_seal(c: canvas.Canvas, sx: float, sy: float, seal_path: Path, size: float = 16 * mm) -> None:
     """角印を描画。画像があれば使い、なければ朱色プレースホルダー。"""
-    if SEAL_PATH.exists():
+    if seal_path.exists():
         try:
             c.drawImage(
-                ImageReader(str(SEAL_PATH)), sx, sy, size, size,
+                ImageReader(str(seal_path)), sx, sy, size, size,
                 mask="auto", preserveAspectRatio=True, anchor="c"
             )
             return
@@ -562,7 +598,7 @@ def draw_pdf_premium_rl(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
 
     # 角印：y2-19mm（5mm上げて金額ボックスとの重なりを回避）
     if config.get("seal", {}).get("enabled", True):
-        _t2_seal(c, w - MR - 18 * mm, y2 - 19 * mm, 16 * mm)
+        _t2_seal(c, w - MR - 18 * mm, y2 - 19 * mm, seal_path_for(config), 16 * mm)
 
     # ════════════════════════════════════════════
     # ③ 金額ボックス（基準PDFと完全一致）
@@ -1087,9 +1123,10 @@ def draw_pdf_template3(data: Dict[str, Any], config: Dict[str, Any]) -> Path:
     if config.get("seal", {}).get("enabled", True):
         seal_x = w - MR - SEAL_S
         seal_y = from_start_y - SEAL_S   # 会社名の高さに合わせる
-        if SEAL_PATH.exists():
+        seal_path = seal_path_for(config)
+        if seal_path.exists():
             try:
-                c.drawImage(ImageReader(str(SEAL_PATH)),
+                c.drawImage(ImageReader(str(seal_path)),
                             seal_x, seal_y, SEAL_S, SEAL_S, mask="auto")
             except Exception:
                 pass
@@ -1434,6 +1471,33 @@ def esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
+def _profile_fields_html(p: Dict[str, Any]) -> str:
+    issuer = p.get("issuer", {})
+    bank = p.get("bank", {})
+    seal = p.get("seal", {})
+    seal_checked = "checked" if seal.get("enabled", True) else ""
+    return f"""<h4>発行元情報</h4><div class="grid">
+<div><label>会社名</label><input name="issuer_company" value="{esc(issuer.get('company',''))}"></div>
+<div><label>代表者名</label><input name="issuer_representative" value="{esc(issuer.get('representative',''))}"></div>
+<div><label>郵便番号</label><input name="issuer_postal" value="{esc(issuer.get('postal',''))}"></div>
+<div><label>住所</label><input name="issuer_address" value="{esc(issuer.get('address',''))}"></div>
+<div><label>電話番号</label><input name="issuer_tel" value="{esc(issuer.get('tel',''))}"></div>
+<div><label>メール</label><input name="issuer_email" value="{esc(issuer.get('email',''))}"></div>
+<div><label>インボイス登録番号</label><input name="issuer_invoice_no" value="{esc(issuer.get('invoice_no',''))}"></div>
+</div>
+<h4>振込先</h4><div class="grid">
+<div><label>銀行名</label><input name="bank_name" value="{esc(bank.get('bank_name',''))}"></div>
+<div><label>支店名</label><input name="bank_branch" value="{esc(bank.get('branch',''))}"></div>
+<div><label>口座種別</label><input name="bank_account_type" value="{esc(bank.get('account_type',''))}"></div>
+<div><label>口座番号</label><input name="bank_account_no" value="{esc(bank.get('account_no',''))}"></div>
+<div><label>口座名義</label><input name="bank_account_name" value="{esc(bank.get('account_name',''))}"></div>
+</div>
+<h4>角印</h4>
+<label><input type="checkbox" name="seal_enabled" value="1" {seal_checked} style="width:auto"> 角印を表示する</label>
+<label>角印画像（PNG/JPG）</label><input type="file" name="seal_file" accept="image/png,image/jpeg">
+<p class="sub">角印画像をアップロードすると、発行元付近の固定位置に配置されます。未アップロードの場合は仮の角印枠を表示します。</p>"""
+
+
 def render_index(data: Dict[str, Any], message: str = "") -> str:
     cfg = load_config()
     rows = ""
@@ -1448,10 +1512,36 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
         </tr>"""
     options = "".join([f'<option value="{k}" {"selected" if data.get("doc_type")==k else ""}>{v}</option>' for k, v in DOC_TITLES.items()])
     cfg_pre = esc(json.dumps(cfg, ensure_ascii=False, indent=2))
-    issuer = cfg.get("issuer", {})
-    bank = cfg.get("bank", {})
-    seal = cfg.get("seal", {})
-    seal_checked = "checked" if seal.get("enabled", True) else ""
+    profiles = cfg.get("profiles", [])
+    selected_profile_id = data.get("profile_id") or (profiles[0].get("id") if profiles else "")
+    profile_options = "".join([f'<option value="{esc(p.get("id",""))}" {"selected" if p.get("id")==selected_profile_id else ""}>{esc(p.get("name",""))}</option>' for p in profiles])
+    profile_cards = ""
+    for p in profiles:
+        delete_form = ""
+        if len(profiles) > 1:
+            delete_form = f"""<form method="post" action="/delete_profile" style="margin-top:8px" onsubmit="return confirm('このプロフィールを削除しますか？');">
+<input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
+<button type="submit" style="background:#a33">削除</button>
+</form>"""
+        profile_cards += f"""<details>
+<summary>{esc(p.get('name','(名称未設定)'))}</summary>
+<form method="post" action="/save_config" enctype="multipart/form-data">
+<input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
+<label>プロフィール名</label><input name="profile_name" value="{esc(p.get('name',''))}">
+{_profile_fields_html(p)}
+<br><button type="submit">保存</button>
+</form>
+{delete_form}
+</details>"""
+    new_profile_card = f"""<details>
+<summary>＋ 新規プロフィールを追加</summary>
+<form method="post" action="/save_config" enctype="multipart/form-data">
+<input type="hidden" name="profile_id" value="">
+<label>プロフィール名</label><input name="profile_name" placeholder="例：A社用">
+{_profile_fields_html({})}
+<br><button type="submit">新規プロフィールとして追加</button>
+</form>
+</details>"""
     t2_note = "ReportLab純正・WeasyPrint不要・Render対応"
     return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>帳票作成システム v16</title>
 <style>body{{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f7;margin:0;color:#222}}header{{background:#1A2B4C;color:#fff;padding:18px 28px;border-bottom:4px solid #C5A059}}main{{max-width:1100px;margin:24px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #ddd;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}}h1{{font-size:22px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}label{{font-weight:600;display:block;margin:10px 0 5px}}input,select,textarea{{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbb;border-radius:10px;font-size:15px}}textarea{{min-height:120px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.items{{width:100%;border-collapse:collapse;margin-top:8px}}.items th,.items td{{border:1px solid #ddd;padding:6px;font-size:13px}}.items input{{padding:7px;font-size:13px}}.sub{{color:#666;font-size:13px}}.flash{{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:10px;margin-bottom:14px;white-space:pre-wrap}}.flash-ok{{background:#eef7ee;border:1px solid #b7dfb7;padding:12px;border-radius:10px;margin-bottom:14px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.pill{{background:#eee;padding:6px 10px;border-radius:999px;font-size:12px}}pre{{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px}}.consult-box{{border:1px solid #d8d8d8;background:#fbfbfb;border-radius:12px;padding:14px;margin-top:14px}}.consult-table{{width:100%;border-collapse:collapse;margin:10px 0}}.consult-table th,.consult-table td{{border:1px solid #ddd;padding:8px;text-align:left}}.consult-table th{{background:#f0f0f0}}.right{{text-align:right!important}}
@@ -1476,7 +1566,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <h2>固定テンプレートに流し込む</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
 <div class="grid">
-<div><label>書類種別</label><select name="doc_type">{options}</select></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
+<div><label>発行元プロフィール</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><select name="doc_type">{options}</select></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
 <br>
 <div class="btn-row">
   <div class="btn-block">
@@ -1493,30 +1583,9 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
   </div>
 </div>
 </form>
-<div class="card"><h2>発行元・振込先・角印の固定保存</h2><p class="sub">ここで保存した内容は、請求書・発注書・見積書・納品書すべてに同じ位置で反映されます。</p>
-<form method="post" action="/save_config" enctype="multipart/form-data">
-<h3>発行元情報</h3><div class="grid">
-<div><label>会社名</label><input name="issuer_company" value="{esc(issuer.get('company',''))}"></div>
-<div><label>代表者名</label><input name="issuer_representative" value="{esc(issuer.get('representative',''))}"></div>
-<div><label>郵便番号</label><input name="issuer_postal" value="{esc(issuer.get('postal',''))}"></div>
-<div><label>住所</label><input name="issuer_address" value="{esc(issuer.get('address',''))}"></div>
-<div><label>電話番号</label><input name="issuer_tel" value="{esc(issuer.get('tel',''))}"></div>
-<div><label>メール</label><input name="issuer_email" value="{esc(issuer.get('email',''))}"></div>
-<div><label>インボイス登録番号</label><input name="issuer_invoice_no" value="{esc(issuer.get('invoice_no',''))}"></div>
-</div>
-<h3>振込先</h3><div class="grid">
-<div><label>銀行名</label><input name="bank_name" value="{esc(bank.get('bank_name',''))}"></div>
-<div><label>支店名</label><input name="bank_branch" value="{esc(bank.get('branch',''))}"></div>
-<div><label>口座種別</label><input name="bank_account_type" value="{esc(bank.get('account_type',''))}"></div>
-<div><label>口座番号</label><input name="bank_account_no" value="{esc(bank.get('account_no',''))}"></div>
-<div><label>口座名義</label><input name="bank_account_name" value="{esc(bank.get('account_name',''))}"></div>
-</div>
-<h3>角印</h3>
-<label><input type="checkbox" name="seal_enabled" value="1" {seal_checked} style="width:auto"> 角印を表示する</label>
-<label>角印画像（PNG/JPG）</label><input type="file" name="seal_file" accept="image/png,image/jpeg">
-<p class="sub">角印画像をアップロードすると、発行元付近の固定位置に配置されます。未アップロードの場合は仮の角印枠を表示します。</p>
-<br><button type="submit">発行元・振込先・角印を保存</button>
-</form>
+<div class="card"><h2>発行元プロフィール管理</h2><p class="sub">プロフィールごとに発行元・振込先・角印を保存できます。PDF作成フォームで使用するプロフィールを選択してください。</p>
+{profile_cards}
+{new_profile_card}
 <details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details></div>
 </main></body></html>"""
 
@@ -1532,7 +1601,7 @@ def form_to_data(params: Dict[str, List[str]]) -> Dict[str, Any]:
             qty_str = v(f"item_qty_{i}", "1") or "1"
             items.append({"name": name, "qty": float(qty_str), "unit": v(f"item_unit_{i}", "式") or "式", "unit_price": int(float(price_str))})
     return {
-        "doc_type": v("doc_type", "invoice"), "client": v("client"), "subject": v("subject"), "issue_date": v("issue_date"), "doc_no": v("doc_no"), "due_date": v("due_date"), "payment_method": v("payment_method"), "delivery_date": v("delivery_date"), "delivery_place": v("delivery_place"), "valid_until": v("valid_until"), "payment_terms": v("payment_terms"), "notes": v("notes"), "tax_rate": int(float(v("tax_rate", "10") or 10)), "items": items or [{"name":"作業費", "qty":1, "unit":"式", "unit_price":0}], "show_amount_on_delivery": True,
+        "doc_type": v("doc_type", "invoice"), "client": v("client"), "subject": v("subject"), "issue_date": v("issue_date"), "doc_no": v("doc_no"), "due_date": v("due_date"), "payment_method": v("payment_method"), "delivery_date": v("delivery_date"), "delivery_place": v("delivery_place"), "valid_until": v("valid_until"), "payment_terms": v("payment_terms"), "notes": v("notes"), "tax_rate": int(float(v("tax_rate", "10") or 10)), "items": items or [{"name":"作業費", "qty":1, "unit":"式", "unit_price":0}], "show_amount_on_delivery": True, "profile_id": v("profile_id", ""),
     }
 
 
@@ -1567,27 +1636,42 @@ def save_config_from_fields(fields: Dict[str, Dict[str, Any]]) -> Dict[str, Any]
     cfg = load_config()
     def get(name: str, default: str = "") -> str:
         return (fields.get(name, {}).get("value") or default).strip()
-    cfg["issuer"] = {
-        "company": get("issuer_company"),
-        "representative": get("issuer_representative"),
-        "postal": get("issuer_postal"),
-        "address": get("issuer_address"),
-        "tel": get("issuer_tel"),
-        "email": get("issuer_email"),
-        "invoice_no": get("issuer_invoice_no"),
+    profile_id = get("profile_id")
+    if not profile_id:
+        profile_id = f"profile_{int(datetime.now().timestamp())}"
+    profile_name = get("profile_name") or "デフォルト"
+    seal_image_path = f"output/seal_{profile_id}.png"
+    profile = {
+        "id": profile_id,
+        "name": profile_name,
+        "issuer": {
+            "company": get("issuer_company"),
+            "representative": get("issuer_representative"),
+            "postal": get("issuer_postal"),
+            "address": get("issuer_address"),
+            "tel": get("issuer_tel"),
+            "email": get("issuer_email"),
+            "invoice_no": get("issuer_invoice_no"),
+        },
+        "bank": {
+            "bank_name": get("bank_name"),
+            "branch": get("bank_branch"),
+            "account_type": get("bank_account_type"),
+            "account_no": get("bank_account_no"),
+            "account_name": get("bank_account_name"),
+        },
+        "seal": {"enabled": "seal_enabled" in fields, "text": "角印", "image_path": seal_image_path},
     }
-    cfg["bank"] = {
-        "bank_name": get("bank_name"),
-        "branch": get("bank_branch"),
-        "account_type": get("bank_account_type"),
-        "account_no": get("bank_account_no"),
-        "account_name": get("bank_account_name"),
-    }
-    cfg.setdefault("seal", {})["enabled"] = "seal_enabled" in fields
-    cfg["seal"]["image_path"] = "output/seal.png"
     f = fields.get("seal_file")
     if f and f.get("filename") and f.get("data"):
-        SEAL_PATH.write_bytes(f["data"])
+        (BASE_DIR / seal_image_path).write_bytes(f["data"])
+    profiles = cfg.setdefault("profiles", [])
+    for i, p in enumerate(profiles):
+        if p.get("id") == profile_id:
+            profiles[i] = profile
+            break
+    else:
+        profiles.append(profile)
     CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     return cfg
 
@@ -1637,6 +1721,16 @@ class Handler(BaseHTTPRequestHandler):
             if LAST_DATA is None:
                 LAST_DATA = default_data()
             self.respond_html(render_index(LAST_DATA, "発行元・振込先・角印を保存しました。次回PDFから自動反映されます。"))
+            return
+        if self.path == "/delete_profile":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_bytes = self.rfile.read(length)
+            fields = parse_multipart(raw_bytes, self.headers.get("Content-Type", ""))
+            profile_id = fields.get("profile_id", {}).get("value", "").strip()
+            delete_profile(profile_id)
+            if LAST_DATA is None:
+                LAST_DATA = default_data()
+            self.respond_html(render_index(LAST_DATA, "プロフィールを削除しました。"))
             return
         if self.path == "/consult":
             length = int(self.headers.get("Content-Length", "0"))
@@ -1695,7 +1789,9 @@ class Handler(BaseHTTPRequestHandler):
             data = form_to_data(params)
             LAST_DATA = data
             print(f"[テンプレート1] PDF生成開始: {data.get('doc_type')} / {data.get('client')}")
-            pdf_path = draw_pdf(data, load_config())
+            cfg = load_config()
+            profile = get_profile(cfg, data.get("profile_id", ""))
+            pdf_path = draw_pdf(data, profile)
             print(f"[テンプレート1] 生成完了: {pdf_path.name}")
             body = pdf_path.read_bytes()
             self.send_response(200)
@@ -1710,7 +1806,9 @@ class Handler(BaseHTTPRequestHandler):
             LAST_DATA = data
             print(f"[テンプレート2] PDF生成開始: {data.get('doc_type')} / {data.get('client')}")
             try:
-                pdf_path = draw_pdf_premium_rl(data, load_config())
+                cfg = load_config()
+                profile = get_profile(cfg, data.get("profile_id", ""))
+                pdf_path = draw_pdf_premium_rl(data, profile)
                 print(f"[テンプレート2] 生成完了: {pdf_path.name}")
                 body = pdf_path.read_bytes()
                 self.send_response(200)
@@ -1732,7 +1830,9 @@ class Handler(BaseHTTPRequestHandler):
             LAST_DATA = data
             print(f"[テンプレート3] PDF生成開始: {data.get('doc_type')} / {data.get('client')}")
             try:
-                pdf_path = draw_pdf_template3(data, load_config())
+                cfg = load_config()
+                profile = get_profile(cfg, data.get("profile_id", ""))
+                pdf_path = draw_pdf_template3(data, profile)
                 print(f"[テンプレート3] 生成完了: {pdf_path.name}")
                 body = pdf_path.read_bytes()
                 self.send_response(200)
@@ -1751,7 +1851,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/create_pdf":
             data = form_to_data(params)
             LAST_DATA = data
-            pdf_path = draw_pdf(data, load_config())
+            cfg = load_config()
+            profile = get_profile(cfg, data.get("profile_id", ""))
+            pdf_path = draw_pdf(data, profile)
             body = pdf_path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
