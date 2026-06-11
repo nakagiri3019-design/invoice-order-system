@@ -254,7 +254,7 @@ def calculate(items: List[Dict[str, Any]], tax_rate: int) -> Dict[str, int]:
         amount = int(qty * price)
         item["amount"] = amount
         subtotal += amount
-    tax = int(round(subtotal * tax_rate / 100))
+    tax = int(subtotal * tax_rate / 100)
     return {"subtotal": subtotal, "tax": tax, "total": subtotal + tax}
 
 
