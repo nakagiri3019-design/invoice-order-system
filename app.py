@@ -1378,18 +1378,94 @@ def money_plain(n: int) -> str:
     return f"{int(n):,}円"
 
 
-def _extract_json_from_reply(reply: str) -> Dict[str, Any]:
-    m = re.search(r'```json\s*(.*?)\s*```', reply, re.DOTALL)
-    if not m:
-        return {}
+def consult_ai(text: str, current_data: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """会話型帳票作成エンジン。WebでもLINEでも同じ関数を使う。"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return {
+            "reply_text": "AI相談機能を使用するには環境変数 ANTHROPIC_API_KEY の設定が必要です。",
+            "doc_data": {},
+            "missing_fields": [],
+            "status": "error",
+        }
+
+    today = date.today().strftime("%Y-%m-%d")
+    doc_template = (
+        '{"doc_type": "invoice", "client": "", "subject": "", "issue_date": "' + today + '", '
+        '"doc_no": "", "due_date": "", "payment_method": "銀行振込", "tax_rate": 10, '
+        '"notes": "", "items": [{"name": "", "qty": 1, "unit": "式", "unit_price": 0}], '
+        '"missing_fields": []}'
+    )
+    system_prompt = (
+        "あなたは請求書・発注書・見積書・納品書の作成を支援するAIアシスタントです。\n"
+        f"今日の日付: {today}\n"
+        "ユーザーの入力から帳票データを読み取り、必ず以下の形式で返答してください。\n\n"
+        "---返答フォーマット---\n"
+        "ユーザーへの返答文をここに書く。\n\n"
+        "DOCUMENT_DATA:\n"
+        + doc_template + "\n"
+        "---ここまで---\n\n"
+        "doc_typeはinvoice/purchase_order/estimate/deliveryのいずれか。\n"
+        "必須チェック: client（宛先）・items（品目と単価が1つ以上）・due_date（支払期日または納期）。\n"
+        "不足している場合はmissing_fieldsに項目名を入れ、ユーザーに質問してください。\n"
+        "doc_no・subject・notesは任意項目（なくてもready扱い）。\n"
+        "発行日が未指定の場合は今日の日付を入れてください。\n"
+        "日本語で回答してください。"
+    )
+    if current_data:
+        system_prompt += "\n\n前回の帳票データ: " + json.dumps(current_data, ensure_ascii=False)
+
     try:
-        return json.loads(m.group(1))
-    except Exception:
-        return {}
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": text.strip()}],
+        )
+        raw = message.content[0].text
 
+        # DOCUMENT_DATA: の後のJSONを抽出
+        doc_data: Dict[str, Any] = {}
+        m = re.search(r'DOCUMENT_DATA:\s*(\{.*\})', raw, re.DOTALL)
+        if m:
+            try:
+                doc_data = json.loads(m.group(1))
+            except Exception:
+                doc_data = {}
 
-def _reply_without_json(reply: str) -> str:
-    return re.sub(r'```json\s*.*?\s*```', '', reply, flags=re.DOTALL).strip()
+        # ユーザー表示テキスト（DOCUMENT_DATA行以降を除去）
+        reply_text = re.sub(r'DOCUMENT_DATA:.*', '', raw, flags=re.DOTALL).strip()
+
+        missing = doc_data.get("missing_fields", [])
+        # 必須フィールドが揃っているか確認
+        items = doc_data.get("items", [])
+        has_items = any(
+            (it.get("name") or "").strip() and int(float(it.get("unit_price") or 0)) > 0
+            for it in items
+        )
+        if not missing:
+            if not doc_data.get("client"):
+                missing.append("client（宛先）")
+            if not has_items:
+                missing.append("items（品目・単価）")
+            if not doc_data.get("due_date"):
+                missing.append("due_date（支払期日/納期）")
+
+        status = "ready" if not missing else "incomplete"
+        return {
+            "reply_text": reply_text,
+            "doc_data": doc_data,
+            "missing_fields": missing,
+            "status": status,
+        }
+    except Exception as e:
+        return {
+            "reply_text": f"AI応答の取得に失敗しました：{e}",
+            "doc_data": {},
+            "missing_fields": [],
+            "status": "error",
+        }
 
 
 def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> str:
@@ -1399,72 +1475,41 @@ def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> s
     if filenames:
         file_note = "<p><b>添付ファイル：</b>" + esc("、".join(filenames)) + "</p>"
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return f"""<div class="consult-box"><h3>相談回答</h3>{file_note}<p>AI相談機能を使用するには環境変数 ANTHROPIC_API_KEY の設定が必要です。</p></div>"""
+    user_text = (prompt or "").strip()
+    if filenames:
+        user_text += "\n\n添付ファイル: " + "、".join(filenames)
 
-    try:
-        user_content = (prompt or "").strip()
-        if filenames:
-            user_content += "\n\n添付ファイル: " + "、".join(filenames)
+    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None)
 
-        system_prompt = (
-            "あなたは請求書・発注書・見積書・納品書の作成を支援するAIアシスタントです。\n"
-            "ユーザーの入力から帳票データを読み取り、以下のJSON形式で内部データを返してください。\n"
-            "必ず返答の末尾に以下の形式でJSONブロックを含めてください：\n"
-            "```json\n"
-            '{"doc_type": "invoice", "client": "", "subject": "", "issue_date": "", '
-            '"doc_no": "", "due_date": "", "payment_method": "銀行振込", "tax_rate": 10, '
-            '"notes": "", "items": [{"name": "", "qty": 1, "unit": "式", "unit_price": 0}], '
-            '"missing_fields": []}\n'
-            "```\n"
-            "doc_typeはinvoice/purchase_order/estimate/deliveryのいずれか。\n"
-            "情報が不足している場合はmissing_fieldsに不足項目名を入れ、ユーザーに質問してください。\n"
-            "発行日が指定されていない場合は今日の日付を入れてください。\n"
-            "日本語で回答し、まず内容の確認文を書いてからJSONブロックを末尾に追加してください。"
-        )
-        if LAST_CONSULT_DATA:
-            system_prompt += "\n\n前回の内容：" + json.dumps(LAST_CONSULT_DATA, ensure_ascii=False)
+    if result["doc_data"]:
+        LAST_CONSULT_DATA = result["doc_data"]
+        if LAST_DATA is None:
+            LAST_DATA = default_data()
+        for key, val in result["doc_data"].items():
+            if key != "missing_fields":
+                LAST_DATA[key] = val
 
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-        )
-        reply = message.content[0].text
+    missing = result["missing_fields"]
+    if result["status"] == "ready":
+        status_badge = '<span class="pill">✅ フォームに反映できます</span>'
+    elif result["status"] == "error":
+        status_badge = ""
+    else:
+        status_badge = '<span class="pill">不足項目：' + esc("、".join(missing)) + '</span>'
 
-        extracted = _extract_json_from_reply(reply)
-        data_status = ""
-        if extracted:
-            LAST_CONSULT_DATA = extracted
-            missing = extracted.get("missing_fields", [])
-            if LAST_DATA is None:
-                LAST_DATA = default_data()
-            for key, val in extracted.items():
-                if key != "missing_fields":
-                    LAST_DATA[key] = val
-            if not missing:
-                data_status = '<span class="pill">✓ 書類データに反映済み</span>'
-            else:
-                data_status = '<span class="pill">不足項目：' + esc("、".join(missing)) + '</span>'
+    reply_html = html.escape(result["reply_text"], quote=False).replace("\n", "<br>")
 
-        display_html = html.escape(_reply_without_json(reply), quote=False).replace("\n", "<br>")
-
-        return f"""<div class="consult-box">
-          <h3>AI相談回答</h3>
-          {file_note}
-          <p>{display_html}</p>
-          <div class="row">
-            <form method="post" action="/use_consult_data" style="display:inline">
-              <button type="submit">フォームに反映してPDF作成へ</button>
-            </form>
-            {data_status}
-          </div>
-        </div>"""
-    except Exception as e:
-        return f"""<div class="consult-box"><h3>相談回答（エラー）</h3>{file_note}<p>AI応答の取得に失敗しました：{esc(str(e))}</p></div>"""
+    return f"""<div class="consult-box">
+      <h3>AI相談回答</h3>
+      {file_note}
+      <div>{reply_html}</div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <form method="post" action="/use_consult_data" style="display:inline">
+          <button type="submit">フォームに反映してPDF作成へ</button>
+        </form>
+        {status_badge}
+      </div>
+    </div>"""
 
 def esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
