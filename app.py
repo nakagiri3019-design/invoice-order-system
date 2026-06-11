@@ -70,6 +70,7 @@ FONTS_READY = False
 FONT_MIN = "HeiseiMin-W3"   # タイトルのみ明朝（register_fonts()で確定）
 LAST_DATA: Dict[str, Any] | None = None
 LAST_CONSULT_HTML: str = ""
+LAST_CONSULT_DATA: Dict[str, Any] = {}
 
 
 def find_font_file(candidates: List[str]) -> str | None:
@@ -1377,7 +1378,22 @@ def money_plain(n: int) -> str:
     return f"{int(n):,}円"
 
 
+def _extract_json_from_reply(reply: str) -> Dict[str, Any]:
+    m = re.search(r'```json\s*(.*?)\s*```', reply, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(1))
+    except Exception:
+        return {}
+
+
+def _reply_without_json(reply: str) -> str:
+    return re.sub(r'```json\s*.*?\s*```', '', reply, flags=re.DOTALL).strip()
+
+
 def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> str:
+    global LAST_DATA, LAST_CONSULT_DATA
     filenames = filenames or []
     file_note = ""
     if filenames:
@@ -1392,20 +1408,60 @@ def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> s
         if filenames:
             user_content += "\n\n添付ファイル: " + "、".join(filenames)
 
+        system_prompt = (
+            "あなたは請求書・発注書・見積書・納品書の作成を支援するAIアシスタントです。\n"
+            "ユーザーの入力から帳票データを読み取り、以下のJSON形式で内部データを返してください。\n"
+            "必ず返答の末尾に以下の形式でJSONブロックを含めてください：\n"
+            "```json\n"
+            '{"doc_type": "invoice", "client": "", "subject": "", "issue_date": "", '
+            '"doc_no": "", "due_date": "", "payment_method": "銀行振込", "tax_rate": 10, '
+            '"notes": "", "items": [{"name": "", "qty": 1, "unit": "式", "unit_price": 0}], '
+            '"missing_fields": []}\n'
+            "```\n"
+            "doc_typeはinvoice/purchase_order/estimate/deliveryのいずれか。\n"
+            "情報が不足している場合はmissing_fieldsに不足項目名を入れ、ユーザーに質問してください。\n"
+            "発行日が指定されていない場合は今日の日付を入れてください。\n"
+            "日本語で回答し、まず内容の確認文を書いてからJSONブロックを末尾に追加してください。"
+        )
+        if LAST_CONSULT_DATA:
+            system_prompt += "\n\n前回の内容：" + json.dumps(LAST_CONSULT_DATA, ensure_ascii=False)
+
         client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
-            system="あなたは請求書・発注書・見積書・納品書の作成を支援するアシスタントです。ユーザーの自然文入力から書類に必要な情報（宛先・品目・金額・発行日・支払期日など）を整理して提示してください。いきなりPDFを作らず、まず内容を確認・整理してください。日本語で回答してください。",
+            system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
         reply = message.content[0].text
-        reply_html = html.escape(reply, quote=False).replace("\n", "<br>")
+
+        extracted = _extract_json_from_reply(reply)
+        data_status = ""
+        if extracted:
+            LAST_CONSULT_DATA = extracted
+            missing = extracted.get("missing_fields", [])
+            if LAST_DATA is None:
+                LAST_DATA = default_data()
+            for key, val in extracted.items():
+                if key != "missing_fields":
+                    LAST_DATA[key] = val
+            if not missing:
+                data_status = '<span class="pill">✓ 書類データに反映済み</span>'
+            else:
+                data_status = '<span class="pill">不足項目：' + esc("、".join(missing)) + '</span>'
+
+        display_html = html.escape(_reply_without_json(reply), quote=False).replace("\n", "<br>")
+
         return f"""<div class="consult-box">
           <h3>AI相談回答</h3>
           {file_note}
-          <p>{reply_html}</p>
-          <div class="row"><span class="pill">内容を確認してからPDF作成へ</span></div>
+          <p>{display_html}</p>
+          <div class="row">
+            <form method="post" action="/use_consult_data" style="display:inline">
+              <button type="submit">フォームに反映してPDF作成へ</button>
+            </form>
+            {data_status}
+          </div>
         </div>"""
     except Exception as e:
         return f"""<div class="consult-box"><h3>相談回答（エラー）</h3>{file_note}<p>AI応答の取得に失敗しました：{esc(str(e))}</p></div>"""
@@ -1653,7 +1709,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         global LAST_DATA
-        global LAST_CONSULT_HTML
+        global LAST_CONSULT_HTML, LAST_CONSULT_DATA
         # パスからクエリ文字列を除去
         self.path = self.path.split("?")[0]
         if self.path == "/save_config":
@@ -1684,7 +1740,12 @@ class Handler(BaseHTTPRequestHandler):
             LAST_CONSULT_HTML = make_consultation_html(prompt, filenames)
             if LAST_DATA is None:
                 LAST_DATA = default_data()
-            self.respond_html(render_index(LAST_DATA, "相談回答を作成しました。内容がよければ、下のボタンまたは『書類データに整理』へ進みます。"))
+            self.respond_html(render_index(LAST_DATA, "AI相談回答を作成しました。"))
+            return
+        if self.path == "/use_consult_data":
+            if LAST_DATA is None:
+                LAST_DATA = default_data()
+            self.respond_html(render_index(LAST_DATA, "書類データをフォームに反映しました。内容を確認してPDFを作成してください。"))
             return
         if self.path == "/use_welfare_proposal":
             LAST_DATA = {
