@@ -1688,17 +1688,17 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 <summary>{esc(p.get('name','(名称未設定)'))}</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
 <input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
-<label>プロフィール名</label><input name="profile_name" value="{esc(p.get('name',''))}">
+<label>表示名</label><input name="profile_name" value="{esc(p.get('name',''))}">
 {_profile_fields_html(p)}
 <br><button type="submit">保存</button>
 </form>
 {delete_form}
 </details>"""
     new_profile_card = f"""<details>
-<summary>＋ 新規プロフィールを追加</summary>
+<summary>＋ 新しい発行元情報を追加</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
 <input type="hidden" name="profile_id" value="">
-<label>プロフィール名</label><input name="profile_name" placeholder="例：A社用">
+<label>表示名</label><input name="profile_name" placeholder="例：A社用">
 {_profile_fields_html({})}
 <br><button type="submit">新規プロフィールとして追加</button>
 </form>
@@ -1754,7 +1754,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <div class="card"><h2>AI相談チャット</h2><p class="sub">作りたい内容をそのまま書いてください。足りない情報はAIが順番に質問します。</p>
 <form method="post" action="/consult" enctype="multipart/form-data">
 <div class="grid" style="margin-bottom:10px">
-  <div><label>発行元プロフィール</label><select name="consult_profile_id">{consult_profile_options}</select></div>
+  <div><label>発行元情報</label><select name="consult_profile_id">{consult_profile_options}</select></div>
   <div><label>書類種別</label>
     <input type="hidden" name="consult_doc_type" id="consult_doc_type_val" value="{consult_doc_type_sel}">
     <div class="sel-btn-group" id="consult_doc_btns">{consult_doc_buttons}</div>
@@ -1779,7 +1779,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <h2>手入力でPDF作成</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
 <div class="grid">
-<div><label>発行元プロフィール</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><input type="hidden" name="doc_type" id="main_doc_type_val" value="{esc(main_doc_type_sel)}"><div class="sel-btn-group" id="main_doc_btns">{main_doc_buttons}</div></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
+<div><label>発行元情報</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><input type="hidden" name="doc_type" id="main_doc_type_val" value="{esc(main_doc_type_sel)}"><div class="sel-btn-group" id="main_doc_btns">{main_doc_buttons}</div></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
 <br>
 <div class="btn-row">
   <div class="btn-block">
@@ -1796,7 +1796,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
   </div>
 </div>
 </form>
-<div class="card"><h2>発行元プロフィール管理</h2><p class="sub">プロフィールごとに発行元・振込先・角印を保存できます。PDF作成フォームで使用するプロフィールを選択してください。</p>
+<div class="card"><h2>発行元情報</h2><p class="sub">これはログイン用の会員登録ではありません。請求書・見積書・発注書・納品書に表示する発行元会社情報です。複数の会社・ブランドを登録して切り替えられます。</p>
 {profile_cards}
 {new_profile_card}
 <details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details></div>
