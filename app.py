@@ -1819,6 +1819,7 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
       <summary style='cursor:pointer;font-size:13px;color:#1A2B4C'>編集</summary>
       <form method="post" action="/save_config" enctype="multipart/form-data">
 <input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
+<input type="hidden" name="return_to" value="{'ai_step' if CREATION_MODE == 'ai' else 'manual'}">
 <label>管理用の名前<span style='color:#e53935'> *</span></label><input name="profile_name" value="{esc(p.get('name',''))}">
 {_profile_fields_html(p)}
 <br><button type="submit">保存</button>
@@ -1833,6 +1834,7 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
 <form method="post" action="/save_config" enctype="multipart/form-data">
 <p style='background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;font-size:13px;margin-bottom:16px'>書類に表示する発行元情報です。<br>会員登録ではありません。</p>
 <input type="hidden" name="profile_id" value="">
+<input type="hidden" name="return_to" value="{'ai_step' if CREATION_MODE == 'ai' else 'manual'}">
 <label>管理用の名前<span style='color:#e53935'> *</span></label>
 <p style='font-size:11px;color:#888;margin:2px 0 8px'>発行元を選ぶときに表示される名前です。PDFには会社名が表示されます。</p>
 <input name="profile_name" placeholder="例：アークラボ用、個人事業用">
@@ -2086,7 +2088,13 @@ class Handler(BaseHTTPRequestHandler):
             save_config_from_fields(fields)
             if LAST_DATA is None:
                 LAST_DATA = default_data()
-            self.respond_html(render_index(LAST_DATA, "発行元・振込先・角印を保存しました。次回PDFから自動反映されます。"))
+            return_to = (fields.get("return_to", {}).get("value") or "").strip()
+            if return_to == "ai_step":
+                CREATION_MODE = "ai"
+                CONSULT_STEP = 0
+                self.respond_html(render_index(LAST_DATA, "発行元情報を保存しました。発行元を選んでください。"))
+            else:
+                self.respond_html(render_index(LAST_DATA, "発行元・振込先・角印を保存しました。次回PDFから自動反映されます。"))
             return
         if self.path == "/delete_profile":
             length = int(self.headers.get("Content-Length", "0"))
