@@ -1713,16 +1713,23 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
         f'{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</option>'
         for p in profiles
     ])
-    consult_doc_options = "".join([
-        f'<option value="{k}" {"selected" if consult_doc_type_sel==k else ""}>{v}</option>'
-        for k, v in DOC_TITLES.items()
+    _doc_btns = [("invoice","請求書"),("estimate","見積書"),("purchase_order","発注書"),("delivery","納品書")]
+    consult_doc_buttons = "".join([
+        f'<button type="button" class="sel-btn{" active" if consult_doc_type_sel==k else ""}" '
+        f'data-val="{k}" data-group="consult_doc_btns" data-hidden="consult_doc_type_val" onclick="selBtn(this)">{v}</button>'
+        for k, v in _doc_btns
     ])
-    _tmpl_opts = [("1","テンプレート1：シンプル"),("2","テンプレート2：ネイビー×ゴールド"),("3","テンプレート3：白黒実務版")]
-    consult_template_radios = "".join([
-        f'<label style="display:inline-flex;align-items:center;gap:5px;font-weight:normal;margin-right:14px;cursor:pointer">'
-        f'<input type="radio" name="consult_template" value="{v}" {"checked" if consult_template_sel==v else ""} style="width:auto">'
-        f'{label}</label>'
-        for v, label in _tmpl_opts
+    _tmpl_btn_data = [("1","📄 シンプル","active-t1"),("2","✨ ネイビー×ゴールド","active-t2"),("3","📋 白黒実務版","active-t3")]
+    consult_tmpl_buttons = "".join([
+        f'<button type="button" class="sel-btn-tmpl{f" {ac}" if consult_template_sel==k else ""}" '
+        f'data-val="{k}" data-active="{ac}" data-group="consult_tmpl_btns" data-hidden="consult_tmpl_val" onclick="selBtn(this)">{label}</button>'
+        for k, label, ac in _tmpl_btn_data
+    ])
+    main_doc_type_sel = data.get("doc_type", "invoice")
+    main_doc_buttons = "".join([
+        f'<button type="button" class="sel-btn{" active" if main_doc_type_sel==k else ""}" '
+        f'data-val="{k}" data-group="main_doc_btns" data-hidden="main_doc_type_val" onclick="selBtn(this)">{v}</button>'
+        for k, v in _doc_btns
     ])
     return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>帳票作成システム v16</title>
 <style>body{{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f7;margin:0;color:#222}}header{{background:#1A2B4C;color:#fff;padding:18px 28px;border-bottom:4px solid #C5A059}}main{{max-width:1100px;margin:24px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #ddd;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}}h1{{font-size:22px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}label{{font-weight:600;display:block;margin:10px 0 5px}}input,select,textarea{{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbb;border-radius:10px;font-size:15px}}textarea{{min-height:120px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.items{{width:100%;border-collapse:collapse;margin-top:8px}}.items th,.items td{{border:1px solid #ddd;padding:6px;font-size:13px}}.items input{{padding:7px;font-size:13px}}.sub{{color:#666;font-size:13px}}.flash{{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:10px;margin-bottom:14px;white-space:pre-wrap}}.flash-ok{{background:#eef7ee;border:1px solid #b7dfb7;padding:12px;border-radius:10px;margin-bottom:14px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.pill{{background:#eee;padding:6px 10px;border-radius:999px;font-size:12px}}pre{{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px}}.consult-box{{border:1px solid #d8d8d8;background:#fbfbfb;border-radius:12px;padding:14px;margin-top:14px}}.consult-table{{width:100%;border-collapse:collapse;margin:10px 0}}.consult-table th,.consult-table td{{border:1px solid #ddd;padding:8px;text-align:left}}.consult-table th{{background:#f0f0f0}}.right{{text-align:right!important}}
@@ -1735,6 +1742,12 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 .btn-t2:hover{{opacity:0.88}}
 .btn-note{{font-size:11px;color:#888;padding-left:4px}}
 button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:700;cursor:pointer}}
+.sel-btn-group{{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}}
+.sel-btn{{background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer;font-size:14px;width:auto;transition:background .15s,color .15s}}
+.sel-btn.active{{background:#1A2B4C;color:#fff}}
+.sel-btn-tmpl{{background:#fff;border:2px solid #888;color:#333;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer;font-size:14px;width:auto;transition:all .15s}}
+.sel-btn-tmpl.active-t1,.sel-btn-tmpl.active-t3{{background:#444;color:#fff;border-color:#444}}
+.sel-btn-tmpl.active-t2{{background:linear-gradient(135deg,#1A2B4C 0%,#2a4a7f 50%,#C5A059 100%);color:#fff;border-color:#1A2B4C}}
 </style></head><body>
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
@@ -1742,11 +1755,15 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <form method="post" action="/consult" enctype="multipart/form-data">
 <div class="grid" style="margin-bottom:10px">
   <div><label>発行元プロフィール</label><select name="consult_profile_id">{consult_profile_options}</select></div>
-  <div><label>書類種別</label><select name="consult_doc_type">{consult_doc_options}</select></div>
+  <div><label>書類種別</label>
+    <input type="hidden" name="consult_doc_type" id="consult_doc_type_val" value="{consult_doc_type_sel}">
+    <div class="sel-btn-group" id="consult_doc_btns">{consult_doc_buttons}</div>
+  </div>
 </div>
 <div style="margin-bottom:14px">
   <label>使用テンプレート</label>
-  <div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:6px">{consult_template_radios}</div>
+  <input type="hidden" name="consult_template" id="consult_tmpl_val" value="{consult_template_sel}">
+  <div class="sel-btn-group" id="consult_tmpl_btns">{consult_tmpl_buttons}</div>
 </div>
 {_render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)}
 <textarea name="prompt" rows="4" placeholder="例：ソラボルジュエリー宛に、5月分のデザイン費50万円で請求書を作りたい。支払期日は6月末。"></textarea>
@@ -1762,7 +1779,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <h2>固定テンプレートに流し込む</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
 <div class="grid">
-<div><label>発行元プロフィール</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><select name="doc_type">{options}</select></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
+<div><label>発行元プロフィール</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><input type="hidden" name="doc_type" id="main_doc_type_val" value="{esc(main_doc_type_sel)}"><div class="sel-btn-group" id="main_doc_btns">{main_doc_buttons}</div></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
 <br>
 <div class="btn-row">
   <div class="btn-block">
@@ -1783,7 +1800,18 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 {profile_cards}
 {new_profile_card}
 <details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details></div>
-</main></body></html>"""
+</main>
+<script>
+function selBtn(btn) {{
+  var g = btn.dataset.group, h = btn.dataset.hidden;
+  document.getElementById(g).querySelectorAll('button').forEach(function(b) {{
+    b.classList.remove('active','active-t1','active-t2','active-t3');
+  }});
+  btn.classList.add(btn.dataset.active || 'active');
+  document.getElementById(h).value = btn.dataset.val;
+}}
+</script>
+</body></html>"""
 
 
 def form_to_data(params: Dict[str, List[str]]) -> Dict[str, Any]:
