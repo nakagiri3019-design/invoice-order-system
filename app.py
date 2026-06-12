@@ -72,6 +72,10 @@ LAST_DATA: Dict[str, Any] | None = None
 LAST_CONSULT_HTML: str = ""
 LAST_CONSULT_DATA: Dict[str, Any] = {}
 LAST_CONSULT_HISTORY: list = []
+CONSULT_STEP: int = 0
+CONSULT_PROFILE_ID: str = ""
+CONSULT_DOC_TYPE: str = "invoice"
+CONSULT_TEMPLATE: str = "2"
 FIELD_LABELS: Dict[str, str] = {
     "client": "宛先",
     "due_date": "支払期日",
@@ -1634,6 +1638,70 @@ def _profile_fields_html(p: Dict[str, Any]) -> str:
 <p class="sub">角印画像をアップロードすると、発行元付近の固定位置に配置されます。未アップロードの場合は仮の角印枠を表示します。</p>"""
 
 
+def _render_consult_card(cfg: Dict[str, Any]) -> str:
+    profiles = cfg.get("profiles", [])
+    _bs = "width:100%;background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:14px;margin:4px 0;font-weight:700;cursor:pointer;font-size:15px;text-align:left"
+    _bs_sm = "background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:10px 18px;margin:4px;font-weight:700;cursor:pointer;font-size:14px"
+
+    if CONSULT_STEP == 0:
+        btns = "".join([
+            f'<form method="post" action="/consult_step">'
+            f'<input type="hidden" name="step_action" value="profile">'
+            f'<input type="hidden" name="profile_id" value="{esc(p.get("id",""))}">'
+            f'<button type="submit" style="{_bs}">{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</button>'
+            f'</form>'
+            for p in profiles
+        ])
+        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① 発行元情報を選んでください</p>{btns}</div>'
+
+    elif CONSULT_STEP == 1:
+        sel_p = next((p for p in profiles if p.get("id") == CONSULT_PROFILE_ID), profiles[0] if profiles else {})
+        company = esc(sel_p.get("issuer", {}).get("company", CONSULT_PROFILE_ID))
+        btns = "".join([
+            f'<form method="post" action="/consult_step" style="display:inline-block">'
+            f'<input type="hidden" name="step_action" value="doc_type">'
+            f'<input type="hidden" name="doc_type" value="{k}">'
+            f'<button type="submit" style="{_bs_sm}">{v}</button>'
+            f'</form>'
+            for k, v in DOC_TITLES.items()
+        ])
+        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">② 書類の種類を選んでください（発行元：{company}）</p><div style="display:flex;flex-wrap:wrap">{btns}</div></div>'
+
+    elif CONSULT_STEP == 2:
+        doc_label = esc(DOC_TITLES.get(CONSULT_DOC_TYPE, "請求書"))
+        _tmpl = [("1","📄 シンプル"),("2","✨ ネイビー×ゴールド"),("3","📋 白黒実務版")]
+        btns = "".join([
+            f'<form method="post" action="/consult_step" style="display:inline-block">'
+            f'<input type="hidden" name="step_action" value="template">'
+            f'<input type="hidden" name="template" value="{v}">'
+            f'<button type="submit" style="{_bs_sm}">{label}</button>'
+            f'</form>'
+            for v, label in _tmpl
+        ])
+        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">③ テンプレートを選んでください（{doc_label}）</p><div style="display:flex;flex-wrap:wrap">{btns}</div></div>'
+
+    else:  # step 3
+        sel_p = next((p for p in profiles if p.get("id") == CONSULT_PROFILE_ID), profiles[0] if profiles else {})
+        company = esc(sel_p.get("issuer", {}).get("company", CONSULT_PROFILE_ID))
+        doc_label = esc(DOC_TITLES.get(CONSULT_DOC_TYPE, "請求書"))
+        tmpl_label = esc({"1": "テンプレート1", "2": "テンプレート2", "3": "テンプレート3"}.get(CONSULT_TEMPLATE, "テンプレート2"))
+        history_html = _render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)
+        return f"""<div class="card"><h2>AI相談チャット</h2>
+<p class="sub">④ 作りたい内容を入力してください</p>
+<p style="color:#666;font-size:13px;margin-bottom:12px">発行元：{company} ／ {doc_label} ／ {tmpl_label}</p>
+{history_html}
+<form method="post" action="/consult" enctype="multipart/form-data">
+<textarea name="prompt" rows="4" placeholder="例：ソラボルジュエリー宛に、5月分のデザイン費50万円で請求書を作りたい。支払期日は6月末。"></textarea>
+<label style="margin-top:8px">参考ファイルを添付（PDF・画像・Excelなど）</label>
+<input type="file" name="upload_file" multiple>
+<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+  <button type="submit">相談する</button>
+  <form method="post" action="/use_consult_data" style="display:inline"><button type="submit" style="background:#2a6040">この内容でPDF作成へ</button></form>
+  <form method="post" action="/reset_consult" style="display:inline"><button type="submit" style="background:#888">会話をリセット</button></form>
+</div>
+</form></div>"""
+
+
 def _render_chat_history(history: list, last_html: str) -> str:
     if not history and not last_html:
         return ""
@@ -1704,27 +1772,7 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 </form>
 </details>"""
     t2_note = "ReportLab純正・WeasyPrint不要・Render対応"
-    # AI相談カード用：選択状態を復元
-    consult_profile_sel = data.get("selected_profile_id") or selected_profile_id
-    consult_doc_type_sel = data.get("doc_type", "invoice")
-    consult_template_sel = str(data.get("selected_template", "2"))
-    consult_profile_options = "".join([
-        f'<option value="{esc(p.get("id",""))}" {"selected" if p.get("id")==consult_profile_sel else ""}>'
-        f'{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</option>'
-        for p in profiles
-    ])
     _doc_btns = [("invoice","請求書"),("estimate","見積書"),("purchase_order","発注書"),("delivery","納品書")]
-    consult_doc_buttons = "".join([
-        f'<button type="button" class="sel-btn{" active" if consult_doc_type_sel==k else ""}" '
-        f'data-val="{k}" data-group="consult_doc_btns" data-hidden="consult_doc_type_val" onclick="selBtn(this)">{v}</button>'
-        for k, v in _doc_btns
-    ])
-    _tmpl_btn_data = [("1","📄 シンプル","active-t1"),("2","✨ ネイビー×ゴールド","active-t2"),("3","📋 白黒実務版","active-t3")]
-    consult_tmpl_buttons = "".join([
-        f'<button type="button" class="sel-btn-tmpl{f" {ac}" if consult_template_sel==k else ""}" '
-        f'data-val="{k}" data-active="{ac}" data-group="consult_tmpl_btns" data-hidden="consult_tmpl_val" onclick="selBtn(this)">{label}</button>'
-        for k, label, ac in _tmpl_btn_data
-    ])
     main_doc_type_sel = data.get("doc_type", "invoice")
     main_doc_buttons = "".join([
         f'<button type="button" class="sel-btn{" active" if main_doc_type_sel==k else ""}" '
@@ -1751,30 +1799,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 </style></head><body>
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
-<div class="card"><h2>AI相談チャット</h2><p class="sub">作りたい内容をそのまま書いてください。足りない情報はAIが順番に質問します。</p>
-<form method="post" action="/consult" enctype="multipart/form-data">
-<div class="grid" style="margin-bottom:10px">
-  <div><label>発行元情報</label><select name="consult_profile_id">{consult_profile_options}</select></div>
-  <div><label>書類種別</label>
-    <input type="hidden" name="consult_doc_type" id="consult_doc_type_val" value="{consult_doc_type_sel}">
-    <div class="sel-btn-group" id="consult_doc_btns">{consult_doc_buttons}</div>
-  </div>
-</div>
-<div style="margin-bottom:14px">
-  <label>使用テンプレート</label>
-  <input type="hidden" name="consult_template" id="consult_tmpl_val" value="{consult_template_sel}">
-  <div class="sel-btn-group" id="consult_tmpl_btns">{consult_tmpl_buttons}</div>
-</div>
-{_render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)}
-<textarea name="prompt" rows="4" placeholder="例：ソラボルジュエリー宛に、5月分のデザイン費50万円で請求書を作りたい。支払期日は6月末。"></textarea>
-<label style="margin-top:8px">参考ファイルを添付（PDF・画像・Excelなど）</label>
-<input type="file" name="upload_file" multiple>
-<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-  <button type="submit">相談する</button>
-  <form method="post" action="/use_consult_data" style="display:inline"><button type="submit" style="background:#2a6040">この内容でPDF作成へ</button></form>
-  <form method="post" action="/reset_consult" style="display:inline"><button type="submit" style="background:#888">会話をリセット</button></form>
-</div>
-</form></div>
+{_render_consult_card(cfg)}
 <form method="post" action="/create_pdf1" class="card" id="main-form">
 <h2>手入力でPDF作成</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
@@ -1934,6 +1959,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         global LAST_DATA, LAST_CONSULT_HTML, LAST_CONSULT_DATA, LAST_CONSULT_HISTORY
+        global CONSULT_STEP, CONSULT_PROFILE_ID, CONSULT_DOC_TYPE, CONSULT_TEMPLATE
         # パスからクエリ文字列を除去
         self.path = self.path.split("?")[0]
         if self.path == "/save_config":
@@ -1955,6 +1981,26 @@ class Handler(BaseHTTPRequestHandler):
                 LAST_DATA = default_data()
             self.respond_html(render_index(LAST_DATA, "プロフィールを削除しました。"))
             return
+        if self.path == "/consult_step":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8")
+            params_s = urllib.parse.parse_qs(raw)
+            step_action = params_s.get("step_action", [""])[0]
+            if step_action == "profile":
+                CONSULT_PROFILE_ID = params_s.get("profile_id", [""])[0]
+                CONSULT_STEP = 1
+            elif step_action == "doc_type":
+                CONSULT_DOC_TYPE = params_s.get("doc_type", ["invoice"])[0]
+                CONSULT_STEP = 2
+            elif step_action == "template":
+                CONSULT_TEMPLATE = params_s.get("template", ["2"])[0]
+                CONSULT_STEP = 3
+                if LAST_DATA is not None:
+                    LAST_DATA["doc_type"] = CONSULT_DOC_TYPE
+                    LAST_DATA["profile_id"] = CONSULT_PROFILE_ID
+                    LAST_DATA["selected_template"] = CONSULT_TEMPLATE
+            self.respond_html(render_index(LAST_DATA or default_data()))
+            return
         if self.path == "/consult":
             length = int(self.headers.get("Content-Length", "0"))
             raw_bytes = self.rfile.read(length)
@@ -1964,19 +2010,15 @@ class Handler(BaseHTTPRequestHandler):
             if not prompt:
                 self.respond_html(render_index(LAST_DATA or default_data(), "入力が空です。テキストを入力してから送信してください。"))
                 return
-            consult_profile_id = fields.get("consult_profile_id", {}).get("value", "").strip()
-            consult_doc_type = fields.get("consult_doc_type", {}).get("value", "invoice").strip() or "invoice"
-            consult_template = fields.get("consult_template", {}).get("value", "2").strip() or "2"
             cfg = load_config()
-            consult_profile = get_profile(cfg, consult_profile_id)
+            consult_profile = get_profile(cfg, CONSULT_PROFILE_ID)
             if LAST_DATA is None:
                 LAST_DATA = default_data()
-            LAST_DATA["doc_type"] = consult_doc_type
-            LAST_DATA["profile_id"] = consult_profile_id
-            LAST_DATA["selected_profile_id"] = consult_profile_id
-            LAST_DATA["selected_template"] = consult_template
-            LAST_CONSULT_HTML = make_consultation_html(prompt, filenames, consult_profile, consult_doc_type)
-            # 会話履歴に今回のターンを追加
+            LAST_DATA["doc_type"] = CONSULT_DOC_TYPE
+            LAST_DATA["profile_id"] = CONSULT_PROFILE_ID
+            LAST_DATA["selected_profile_id"] = CONSULT_PROFILE_ID
+            LAST_DATA["selected_template"] = CONSULT_TEMPLATE
+            LAST_CONSULT_HTML = make_consultation_html(prompt, filenames, consult_profile, CONSULT_DOC_TYPE)
             result_reply = re.sub(r'<[^>]+>', '', LAST_CONSULT_HTML)
             LAST_CONSULT_HISTORY.append({
                 "user": prompt,
@@ -1998,6 +2040,10 @@ class Handler(BaseHTTPRequestHandler):
             LAST_CONSULT_HTML = ""
             LAST_CONSULT_DATA = {}
             LAST_DATA = default_data()
+            CONSULT_STEP = 0
+            CONSULT_PROFILE_ID = ""
+            CONSULT_DOC_TYPE = "invoice"
+            CONSULT_TEMPLATE = "2"
             self.respond_html(render_index(LAST_DATA, "会話をリセットしました。"))
             return
         if self.path == "/use_welfare_proposal":
