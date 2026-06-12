@@ -1829,7 +1829,7 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
 <label>管理用の名前<span style='color:#e53935'> *</span></label>
 <p style='font-size:11px;color:#888;margin:2px 0 8px'>発行元を選ぶときに表示される名前です。PDFには会社名が表示されます。</p>
 <input name="profile_name" placeholder="例：アークラボ用、個人事業用">
-<p style='font-size:12px;color:#666;background:#f5f5f5;padding:8px;border-radius:6px;margin:8px 0'>💡 請求書番号は任意です。未入力の場合はAI相談時に自動採番されます。</p>
+<p style='font-size:12px;color:#666;background:#f5f5f5;padding:8px;border-radius:6px;margin:8px 0'>💡 請求書番号・見積書番号・発注書番号・納品書番号は、書類作成時に自動で採番されます。この画面では発行元情報のみ登録します。</p>
 {_profile_fields_html({})}
 <br><button type="submit">発行元情報を保存する</button>
 </form>
