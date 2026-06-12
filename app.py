@@ -1782,7 +1782,7 @@ def _render_chat_history(history: list, last_html: str) -> str:
     return '<div style="max-height:500px;overflow-y:auto;margin-bottom:14px;padding-right:4px">' + "".join(parts) + "</div>"
 
 
-def render_index(data: Dict[str, Any], message: str = "") -> str:
+def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool = False) -> str:
     cfg = load_config()
     rows = ""
     for i in range(8):
@@ -1817,10 +1817,17 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 </form>
 {delete_form}
 </details>"""
-    new_profile_card = f"""<details>
+    _open_attr = "open" if open_issuer_form else ""
+    _issuer_form_note = (
+        "<p style='background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px'>"
+        "書類に表示する発行元情報です。<br>会員登録ではありません。"
+        "</p>"
+        if open_issuer_form else ""
+    )
+    new_profile_card = f"""<details {_open_attr}>
 <summary>＋ 新しい発行元情報を追加</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
-<input type="hidden" name="profile_id" value="">
+{_issuer_form_note}<input type="hidden" name="profile_id" value="">
 <label>表示名</label><input name="profile_name" placeholder="例：A社用">
 {_profile_fields_html({})}
 <br><button type="submit">新規プロフィールとして追加</button>
@@ -2093,9 +2100,8 @@ class Handler(BaseHTTPRequestHandler):
                 CONSULT_STEP = 0
             elif step_action == "new_issuer":
                 CONSULT_STEP = 0
-                self.send_response(302)
-                self.send_header("Location", "/#issuer-section")
-                self.end_headers()
+                CREATION_MODE = "manual"
+                self.respond_html(render_index(LAST_DATA or default_data(), open_issuer_form=True))
                 return
             elif step_action == "profile":
                 CONSULT_PROFILE_ID = params_s.get("profile_id", [""])[0]
