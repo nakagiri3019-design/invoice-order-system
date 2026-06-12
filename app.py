@@ -72,7 +72,7 @@ LAST_DATA: Dict[str, Any] | None = None
 LAST_CONSULT_HTML: str = ""
 LAST_CONSULT_DATA: Dict[str, Any] = {}
 LAST_CONSULT_HISTORY: list = []
-CONSULT_STEP: int = 0
+CONSULT_STEP: int = -1
 CONSULT_PROFILE_ID: str = ""
 CONSULT_DOC_TYPE: str = "invoice"
 CONSULT_TEMPLATE: str = "2"
@@ -1644,6 +1644,24 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
     _bs = "width:100%;background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:14px;margin:4px 0;font-weight:700;cursor:pointer;font-size:15px;text-align:left"
     _bs_sm = "background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:10px 18px;margin:4px;font-weight:700;cursor:pointer;font-size:14px"
 
+    if CONSULT_STEP == -1:
+        return (
+            '<div class="card">'
+            '<h2>AI相談チャット</h2>'
+            '<p style="font-size:16px;font-weight:700;margin-bottom:16px">請求書を発行する会社・屋号は登録済みですか？</p>'
+            '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+            '<form method="post" action="/consult_step">'
+            '<input type="hidden" name="step_action" value="has_issuer">'
+            '<button type="submit" style="background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:14px 24px;font-size:15px;font-weight:700;cursor:pointer">✅ 登録済みの発行元を使う</button>'
+            '</form>'
+            '<form method="post" action="/consult_step">'
+            '<input type="hidden" name="step_action" value="new_issuer">'
+            '<button type="submit" style="background:#fff;color:#1A2B4C;border:2px solid #1A2B4C;border-radius:10px;padding:14px 24px;font-size:15px;font-weight:700;cursor:pointer">📝 新しく発行元情報を登録する</button>'
+            '</form>'
+            '</div>'
+            '</div>'
+        )
+
     if CONSULT_STEP == 0:
         if len(profiles) == 0:
             # パターンA：未登録
@@ -2062,6 +2080,8 @@ class Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(length).decode("utf-8")
             params_m = urllib.parse.parse_qs(raw)
             CREATION_MODE = params_m.get("mode", ["ai"])[0]
+            if CREATION_MODE == "ai":
+                CONSULT_STEP = -1
             self.respond_html(render_index(LAST_DATA or default_data()))
             return
         if self.path == "/consult_step":
@@ -2069,7 +2089,15 @@ class Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(length).decode("utf-8")
             params_s = urllib.parse.parse_qs(raw)
             step_action = params_s.get("step_action", [""])[0]
-            if step_action == "profile":
+            if step_action == "has_issuer":
+                CONSULT_STEP = 0
+            elif step_action == "new_issuer":
+                CONSULT_STEP = 0
+                self.send_response(302)
+                self.send_header("Location", "/#issuer-section")
+                self.end_headers()
+                return
+            elif step_action == "profile":
                 CONSULT_PROFILE_ID = params_s.get("profile_id", [""])[0]
                 CONSULT_STEP = 1
             elif step_action == "doc_type":
@@ -2125,7 +2153,7 @@ class Handler(BaseHTTPRequestHandler):
             LAST_CONSULT_HTML = ""
             LAST_CONSULT_DATA = {}
             LAST_DATA = default_data()
-            CONSULT_STEP = 0
+            CONSULT_STEP = -1
             CONSULT_PROFILE_ID = ""
             CONSULT_DOC_TYPE = "invoice"
             CONSULT_TEMPLATE = "2"
