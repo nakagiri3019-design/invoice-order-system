@@ -1515,7 +1515,10 @@ def consult_ai(
         "- unit_priceは画像・ユーザー入力から読み取れた金額だけを入れる。不明な場合は0のまま。\n"
         '- due_dateは画像・ユーザー文脈から確定した日付を入れる。「5月末入金」なら2026年5月31日と推定して入れる。\n'
         "- 絶対にダミー値（株式会社〇〇、AI開発支援業務、1000000など）を入れない。\n"
-        '- missing_fieldsには未確定の項目名を入れる。品目名が未確定なら["items"]を入れる。\n\n'
+        '- missing_fieldsには未確定の項目名を入れる。品目名が未確定なら["items"]を入れる。\n'
+        '- 画像から合計金額・入金金額が読み取れた場合、itemsにその金額をunit_priceとして入れる。\n'
+        '  例：入金額1,193,500円なら items: [{"name": "", "qty": 1, "unit": "式", "unit_price": 1193500}]\n'
+        '  ただし品目名が未確定の場合はnameを空文字にして、missing_fieldsに"items"を含める。\n\n'
         "【重要ルール：一問一答で不足情報を確認すること】\n"
         "1. 画像・ファイルから読み取れた情報は、改めてユーザーに確認しない。\n"
         "   例：通帳画像から「インタラクト 1,193,500円 5月29日」が読めた場合、宛先・金額・日付は確定済みとして扱う。\n"
@@ -1620,22 +1623,27 @@ def _doc_summary_html(data: Dict[str, Any]) -> str:
     if not data:
         return ""
     items = data.get("items", [])
-    totals = calculate(list(items), int(data.get("tax_rate", 10)))
     doc_label = DOC_TITLES.get(data.get("doc_type", "invoice"), "書類")
+    header = (
+        f"<tr><th colspan='4'>{esc(doc_label)}　宛先: {esc(data.get('client','—'))}　"
+        f"発行日: {esc(data.get('issue_date',''))}　支払期日: {esc(data.get('due_date','—'))}</th></tr>"
+        f"<tr><th>品目</th><th class='right'>数量</th><th class='right'>単価</th><th class='right'>金額</th></tr>"
+    )
+    valid_items = [i for i in items if (i.get("name") or "").strip() or int(i.get("unit_price") or 0) > 0]
+    if not valid_items:
+        pending = "<tr><td colspan='4' style='color:#888;font-style:italic'>品目：AIと相談中（品目名を教えてください）</td></tr>"
+        return f'<div style="margin-top:12px;border-top:1px solid #ddd;padding-top:10px"><table class="consult-table">{header}{pending}</table></div>'
+    totals = calculate(list(valid_items), int(data.get("tax_rate", 10)))
     rows = ""
-    for it in items:
-        if not (it.get("name") or "").strip():
-            continue
+    for it in valid_items:
         qty = qty_fmt(it.get("qty", 0))
         price = int(it.get("unit_price") or 0)
         amount = int(it.get("amount") or 0)
-        rows += f"<tr><td>{esc(it.get('name',''))}</td><td class='right'>{qty}{esc(it.get('unit','式'))}</td><td class='right'>{price:,}</td><td class='right'>{amount:,}</td></tr>"
-    if not rows:
-        return ""
+        name = (it.get("name") or "").strip() or "（品目名未確定）"
+        rows += f"<tr><td>{esc(name)}</td><td class='right'>{qty}{esc(it.get('unit','式'))}</td><td class='right'>{price:,}</td><td class='right'>{amount:,}</td></tr>"
     return f"""<div style="margin-top:12px;border-top:1px solid #ddd;padding-top:10px">
 <table class="consult-table">
-<tr><th colspan="4">{esc(doc_label)}　宛先: {esc(data.get('client','—'))}　発行日: {esc(data.get('issue_date',''))}　支払期日: {esc(data.get('due_date','—'))}</th></tr>
-<tr><th>品目</th><th class="right">数量</th><th class="right">単価</th><th class="right">金額</th></tr>
+{header}
 {rows}
 <tr><td colspan="3" class="right"><b>小計</b></td><td class="right">{totals['subtotal']:,}</td></tr>
 <tr><td colspan="3" class="right">消費税（{data.get('tax_rate',10)}%）</td><td class="right">{totals['tax']:,}</td></tr>
@@ -1660,12 +1668,17 @@ def make_consultation_html(
 
     result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY, profile, doc_type, file_contents)
 
-    if result["doc_data"]:
-        LAST_CONSULT_DATA = result["doc_data"]
+    doc_data = result.get("doc_data", {})
+    if doc_data:
+        LAST_CONSULT_DATA = doc_data
         if LAST_DATA is None:
             LAST_DATA = default_data()
-        for key, val in result["doc_data"].items():
-            if key != "missing_fields":
+        for key, val in doc_data.items():
+            if key == "items":
+                LAST_DATA[key] = val
+            elif val not in ("", None, 0, []):
+                LAST_DATA[key] = val
+            elif key in ("client", "due_date", "doc_no", "subject") and val == "":
                 LAST_DATA[key] = val
 
     missing = result["missing_fields"]
