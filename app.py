@@ -77,6 +77,8 @@ CONSULT_PROFILE_ID: str = ""
 CONSULT_DOC_TYPE: str = "invoice"
 CONSULT_TEMPLATE: str = "2"
 CREATION_MODE: str = "ai"
+BANK_CONFIRM_NEEDED: bool = False
+BANK_CHECK_SKIPPED: bool = False
 FIELD_LABELS: Dict[str, str] = {
     "client": "宛先",
     "due_date": "支払期日",
@@ -1714,6 +1716,25 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
     elif CONSULT_STEP == 1:
         sel_p = next((p for p in profiles if p.get("id") == CONSULT_PROFILE_ID), profiles[0] if profiles else {})
         company = esc(sel_p.get("issuer", {}).get("company", CONSULT_PROFILE_ID))
+        if BANK_CONFIRM_NEEDED:
+            return (
+                '<div class="card"><h2>AI相談チャット</h2>'
+                '<p class="sub">② 書類の種類を選んでください</p>'
+                '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:16px;margin:12px 0">'
+                '<p style="font-weight:700;margin:0 0 8px">⚠️ 振込先情報が未登録です</p>'
+                '<p style="margin:0;font-size:14px">この発行元情報には振込先が登録されていません。<br>請求書に振込先を表示しなくてもよろしいですか？</p>'
+                '</div>'
+                '<div style="display:flex;gap:10px;flex-wrap:wrap">'
+                '<form method="post" action="/consult_step">'
+                '<input type="hidden" name="step_action" value="skip_bank">'
+                '<button type="submit" style="background:#888;color:#fff;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;font-weight:700">振込先なしで進める</button>'
+                '</form>'
+                '<form method="post" action="/consult_step">'
+                '<input type="hidden" name="step_action" value="edit_bank">'
+                '<button type="submit" style="background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;font-weight:700">発行元情報を編集する</button>'
+                '</form>'
+                '</div></div>'
+            )
         btns = "".join([
             f'<form method="post" action="/consult_step" style="display:inline-block">'
             f'<input type="hidden" name="step_action" value="doc_type">'
@@ -2078,7 +2099,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         global LAST_DATA, LAST_CONSULT_HTML, LAST_CONSULT_DATA, LAST_CONSULT_HISTORY
         global CONSULT_STEP, CONSULT_PROFILE_ID, CONSULT_DOC_TYPE, CONSULT_TEMPLATE
-        global CREATION_MODE
+        global CREATION_MODE, BANK_CONFIRM_NEEDED, BANK_CHECK_SKIPPED
         # パスからクエリ文字列を除去
         self.path = self.path.split("?")[0]
         if self.path == "/save_config":
@@ -2134,6 +2155,24 @@ class Handler(BaseHTTPRequestHandler):
             elif step_action == "doc_type":
                 CONSULT_DOC_TYPE = params_s.get("doc_type", ["invoice"])[0]
                 CONSULT_STEP = 2
+                BANK_CONFIRM_NEEDED = False
+                if CONSULT_DOC_TYPE == "invoice" and not BANK_CHECK_SKIPPED:
+                    _cfg = load_config()
+                    _prof = get_profile(_cfg, CONSULT_PROFILE_ID)
+                    _bank = _prof.get("bank", {})
+                    if not all([_bank.get("bank_name",""), _bank.get("branch",""), _bank.get("account_no",""), _bank.get("account_name","")]):
+                        BANK_CONFIRM_NEEDED = True
+                        CONSULT_STEP = 1
+            elif step_action == "skip_bank":
+                BANK_CHECK_SKIPPED = True
+                BANK_CONFIRM_NEEDED = False
+                CONSULT_STEP = 2
+            elif step_action == "edit_bank":
+                BANK_CONFIRM_NEEDED = False
+                self.send_response(302)
+                self.send_header("Location", "/?open_issuer_form=1#issuer-section")
+                self.end_headers()
+                return
             elif step_action == "template":
                 CONSULT_TEMPLATE = params_s.get("template", ["2"])[0]
                 CONSULT_STEP = 3
@@ -2188,6 +2227,8 @@ class Handler(BaseHTTPRequestHandler):
             CONSULT_PROFILE_ID = ""
             CONSULT_DOC_TYPE = "invoice"
             CONSULT_TEMPLATE = "2"
+            BANK_CONFIRM_NEEDED = False
+            BANK_CHECK_SKIPPED = False
             self.respond_html(render_index(LAST_DATA, "会話をリセットしました。"))
             return
         if self.path == "/use_welfare_proposal":
