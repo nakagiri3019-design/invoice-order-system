@@ -1780,6 +1780,31 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
         f'data-val="{k}" data-group="main_doc_btns" data-hidden="main_doc_type_val" onclick="selBtn(this)">{v}</button>'
         for k, v in _doc_btns
     ])
+    # 発行元セクションをモードで切り替え
+    _ai_pid = CONSULT_PROFILE_ID or data.get("profile_id") or (profiles[0].get("id") if profiles else "")
+    _ai_p = next((p for p in profiles if p.get("id") == _ai_pid), profiles[0] if profiles else {})
+    _ai_pname = esc(_ai_p.get("name", ""))
+    _ai_company = esc(_ai_p.get("issuer", {}).get("company", ""))
+    _issuer_inner = (
+        profile_cards + "\n" + new_profile_card
+        + f'\n<details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details>'
+    )
+    if CREATION_MODE == "ai":
+        issuer_section = (
+            f'<div style="background:#f5f5f5;border-radius:10px;padding:12px;margin-bottom:12px;'
+            f'display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+            f'<span style="font-size:13px;color:#555">発行元：{_ai_pname}（{_ai_company}）</span>'
+            f'<details style="display:inline">'
+            f'<summary style="cursor:pointer;font-size:13px;color:#1A2B4C;font-weight:600">発行元情報を変更・追加する</summary>'
+            f'{_issuer_inner}'
+            f'</details></div>'
+        )
+    else:
+        issuer_section = (
+            f'<div class="card"><h2>発行元情報</h2>'
+            f'<p class="sub">これはログイン用の会員登録ではありません。請求書・見積書・発注書・納品書に表示する発行元会社情報です。複数の会社・ブランドを登録して切り替えられます。</p>'
+            f'{_issuer_inner}</div>'
+        )
     return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>帳票作成システム v16</title>
 <style>body{{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f7;margin:0;color:#222}}header{{background:#1A2B4C;color:#fff;padding:18px 28px;border-bottom:4px solid #C5A059}}main{{max-width:1100px;margin:24px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #ddd;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}}h1{{font-size:22px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}label{{font-weight:600;display:block;margin:10px 0 5px}}input,select,textarea{{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbb;border-radius:10px;font-size:15px}}textarea{{min-height:120px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.items{{width:100%;border-collapse:collapse;margin-top:8px}}.items th,.items td{{border:1px solid #ddd;padding:6px;font-size:13px}}.items input{{padding:7px;font-size:13px}}.sub{{color:#666;font-size:13px}}.flash{{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:10px;margin-bottom:14px;white-space:pre-wrap}}.flash-ok{{background:#eef7ee;border:1px solid #b7dfb7;padding:12px;border-radius:10px;margin-bottom:14px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.pill{{background:#eee;padding:6px 10px;border-radius:999px;font-size:12px}}pre{{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px}}.consult-box{{border:1px solid #d8d8d8;background:#fbfbfb;border-radius:12px;padding:14px;margin-top:14px}}.consult-table{{width:100%;border-collapse:collapse;margin:10px 0}}.consult-table th,.consult-table td{{border:1px solid #ddd;padding:8px;text-align:left}}.consult-table th{{background:#f0f0f0}}.right{{text-align:right!important}}
 .btn-row{{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}}
@@ -1834,10 +1859,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
   </div>
 </div>
 </form>
-<div class="card"><h2>発行元情報</h2><p class="sub">これはログイン用の会員登録ではありません。請求書・見積書・発注書・納品書に表示する発行元会社情報です。複数の会社・ブランドを登録して切り替えられます。</p>
-{profile_cards}
-{new_profile_card}
-<details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details></div>
+{issuer_section}
 </main>
 <script>
 function selBtn(btn) {{
