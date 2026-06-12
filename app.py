@@ -1400,6 +1400,8 @@ def consult_ai(
     text: str,
     current_data: Dict[str, Any] | None = None,
     conversation_history: list | None = None,
+    profile: Dict[str, Any] | None = None,
+    doc_type: str = "invoice",
 ) -> Dict[str, Any]:
     """会話型帳票作成エンジン。WebでもLINEでも同じ関数を使う。"""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -1412,39 +1414,46 @@ def consult_ai(
         }
 
     today = date.today().strftime("%Y-%m-%d")
+    doc_label = DOC_TITLES.get(doc_type, "請求書")
     doc_template = (
-        '{"doc_type": "invoice", "client": "", "subject": "", "issue_date": "' + today + '", '
+        '{"doc_type": "' + doc_type + '", "client": "", "subject": "", "issue_date": "' + today + '", '
         '"doc_no": "", "due_date": "", "payment_method": "銀行振込", "tax_rate": 10, '
         '"notes": "", "items": [{"name": "", "qty": 1, "unit": "式", "unit_price": 0}], '
         '"missing_fields": []}'
     )
 
-    # 振込先情報を確認
-    try:
-        cfg = load_config()
-        profiles = cfg.get("profiles", [])
-        bank = profiles[0].get("bank", {}) if profiles else {}
-        bank_registered = bool(bank.get("bank_name") and bank.get("account_no"))
-        bank_info = (
-            f"{bank.get('bank_name','')} {bank.get('branch','')} {bank.get('account_type','')} "
-            f"{bank.get('account_no','')} {bank.get('account_name','')}"
-            if bank_registered else "未登録"
-        )
-    except Exception:
-        bank_registered = False
-        bank_info = "未登録"
+    # プロフィールから発行元・振込先情報を取得
+    if profile is None:
+        try:
+            cfg = load_config()
+            profiles = cfg.get("profiles", [])
+            profile = profiles[0] if profiles else {}
+        except Exception:
+            profile = {}
+    issuer = profile.get("issuer", {})
+    company = issuer.get("company", "")
+    bank = profile.get("bank", {})
+    bank_registered = bool(bank.get("bank_name") and bank.get("account_no"))
+    bank_info = (
+        f"{bank.get('bank_name','')} {bank.get('branch','')} {bank.get('account_type','')} "
+        f"{bank.get('account_no','')} {bank.get('account_name','')}"
+        if bank_registered else "未登録"
+    )
 
     system_prompt = (
         "あなたは請求書・発注書・見積書・納品書の作成を支援するAIアシスタントです。\n"
         f"今日の日付: {today}\n"
+        + (f"発行元会社名: {company}（この情報はすでに確定しているので毎回質問しないこと）\n" if company else "")
+        + f"作成書類種別: {doc_label}（この書類種別で進めること）\n"
         f"発行元の振込先: {bank_info}\n"
         "ユーザーの入力から帳票データを読み取り、必ず以下の形式で返答してください。\n\n"
         "---返答フォーマット---\n"
+        f"発行元：{company} / 書類種別：{doc_label}\n\n"
         "ユーザーへの返答文をここに書く。\n\n"
         "DOCUMENT_DATA:\n"
         + doc_template + "\n"
         "---ここまで---\n\n"
-        "doc_typeはinvoice/purchase_order/estimate/deliveryのいずれか。\n"
+        f"doc_typeは必ず\"{doc_type}\"にすること。\n"
         "必須チェック: client（宛先）・items（品目と単価が1つ以上）・due_date（支払期日または納期）。\n"
         + ("振込先は登録済みのためmissing_fieldsにbank_infoを含めないこと。\n" if bank_registered else "")
         + "不足している場合はmissing_fieldsに項目名を入れ、ユーザーに質問してください。\n"
@@ -1545,7 +1554,12 @@ def _doc_summary_html(data: Dict[str, Any]) -> str:
 </table></div>"""
 
 
-def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> str:
+def make_consultation_html(
+    prompt: str,
+    filenames: List[str] | None = None,
+    profile: Dict[str, Any] | None = None,
+    doc_type: str = "invoice",
+) -> str:
     global LAST_DATA, LAST_CONSULT_DATA
     filenames = filenames or []
 
@@ -1555,7 +1569,7 @@ def make_consultation_html(prompt: str, filenames: List[str] | None = None) -> s
         user_text += "\n\n添付ファイルあり: " + "、".join(filenames)
         file_warn = "<p style='color:#888;font-size:13px'>（添付ファイルの内容は現在自動読み取り非対応です。内容を手動で入力欄に貼り付けてください）</p>"
 
-    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY)
+    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY, profile, doc_type)
 
     if result["doc_data"]:
         LAST_CONSULT_DATA = result["doc_data"]
@@ -1690,6 +1704,26 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
 </form>
 </details>"""
     t2_note = "ReportLab純正・WeasyPrint不要・Render対応"
+    # AI相談カード用：選択状態を復元
+    consult_profile_sel = data.get("selected_profile_id") or selected_profile_id
+    consult_doc_type_sel = data.get("doc_type", "invoice")
+    consult_template_sel = str(data.get("selected_template", "2"))
+    consult_profile_options = "".join([
+        f'<option value="{esc(p.get("id",""))}" {"selected" if p.get("id")==consult_profile_sel else ""}>'
+        f'{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</option>'
+        for p in profiles
+    ])
+    consult_doc_options = "".join([
+        f'<option value="{k}" {"selected" if consult_doc_type_sel==k else ""}>{v}</option>'
+        for k, v in DOC_TITLES.items()
+    ])
+    _tmpl_opts = [("1","テンプレート1：シンプル"),("2","テンプレート2：ネイビー×ゴールド"),("3","テンプレート3：白黒実務版")]
+    consult_template_radios = "".join([
+        f'<label style="display:inline-flex;align-items:center;gap:5px;font-weight:normal;margin-right:14px;cursor:pointer">'
+        f'<input type="radio" name="consult_template" value="{v}" {"checked" if consult_template_sel==v else ""} style="width:auto">'
+        f'{label}</label>'
+        for v, label in _tmpl_opts
+    ])
     return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>帳票作成システム v16</title>
 <style>body{{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f7;margin:0;color:#222}}header{{background:#1A2B4C;color:#fff;padding:18px 28px;border-bottom:4px solid #C5A059}}main{{max-width:1100px;margin:24px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #ddd;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.04)}}h1{{font-size:22px;margin:0 0 4px}}h2{{font-size:18px;margin:0 0 12px}}label{{font-weight:600;display:block;margin:10px 0 5px}}input,select,textarea{{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbb;border-radius:10px;font-size:15px}}textarea{{min-height:120px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.items{{width:100%;border-collapse:collapse;margin-top:8px}}.items th,.items td{{border:1px solid #ddd;padding:6px;font-size:13px}}.items input{{padding:7px;font-size:13px}}.sub{{color:#666;font-size:13px}}.flash{{background:#fff3cd;border:1px solid #ffc107;padding:12px;border-radius:10px;margin-bottom:14px;white-space:pre-wrap}}.flash-ok{{background:#eef7ee;border:1px solid #b7dfb7;padding:12px;border-radius:10px;margin-bottom:14px}}.row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.pill{{background:#eee;padding:6px 10px;border-radius:999px;font-size:12px}}pre{{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:12px;border-radius:10px}}.consult-box{{border:1px solid #d8d8d8;background:#fbfbfb;border-radius:12px;padding:14px;margin-top:14px}}.consult-table{{width:100%;border-collapse:collapse;margin:10px 0}}.consult-table th,.consult-table td{{border:1px solid #ddd;padding:8px;text-align:left}}.consult-table th{{background:#f0f0f0}}.right{{text-align:right!important}}
 .btn-row{{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}}
@@ -1705,8 +1739,16 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
 <div class="card"><h2>AI相談チャット</h2><p class="sub">話すように入力するだけで帳票データを作成できます。複数ターンの会話で情報を補完していきます。</p>
-{_render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)}
 <form method="post" action="/consult" enctype="multipart/form-data">
+<div class="grid" style="margin-bottom:10px">
+  <div><label>発行元プロフィール</label><select name="consult_profile_id">{consult_profile_options}</select></div>
+  <div><label>書類種別</label><select name="consult_doc_type">{consult_doc_options}</select></div>
+</div>
+<div style="margin-bottom:14px">
+  <label>使用テンプレート</label>
+  <div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:6px">{consult_template_radios}</div>
+</div>
+{_render_chat_history(LAST_CONSULT_HISTORY, LAST_CONSULT_HTML)}
 <textarea name="prompt" rows="4" placeholder="例：ソラボルジュエリー宛に、5月分のデザイン費50万円で請求書を作りたい。支払期日は6月末。"></textarea>
 <label style="margin-top:8px">参考ファイルを添付（PDF・画像・Excelなど）</label>
 <input type="file" name="upload_file" multiple>
@@ -1894,22 +1936,34 @@ class Handler(BaseHTTPRequestHandler):
             if not prompt:
                 self.respond_html(render_index(LAST_DATA or default_data(), "入力が空です。テキストを入力してから送信してください。"))
                 return
-            LAST_CONSULT_HTML = make_consultation_html(prompt, filenames)
-            # 会話履歴に今回のターンを追加（consult_aiが返したreply_textをassistant_textに保存）
-            result_reply = re.sub(r'<[^>]+>', '', LAST_CONSULT_HTML)  # HTMLタグ除去して保存
-            LAST_CONSULT_HISTORY.append({
-                "user": prompt,
-                "assistant": LAST_CONSULT_DATA.get("_raw_reply", ""),
-                "assistant_text": re.sub(r'DOCUMENT_DATA:.*', '', result_reply, flags=re.DOTALL).strip(),
-            })
+            consult_profile_id = fields.get("consult_profile_id", {}).get("value", "").strip()
+            consult_doc_type = fields.get("consult_doc_type", {}).get("value", "invoice").strip() or "invoice"
+            consult_template = fields.get("consult_template", {}).get("value", "2").strip() or "2"
+            cfg = load_config()
+            consult_profile = get_profile(cfg, consult_profile_id)
             if LAST_DATA is None:
                 LAST_DATA = default_data()
+            LAST_DATA["doc_type"] = consult_doc_type
+            LAST_DATA["profile_id"] = consult_profile_id
+            LAST_DATA["selected_profile_id"] = consult_profile_id
+            LAST_DATA["selected_template"] = consult_template
+            LAST_CONSULT_HTML = make_consultation_html(prompt, filenames, consult_profile, consult_doc_type)
+            # 会話履歴に今回のターンを追加
+            result_reply = re.sub(r'<[^>]+>', '', LAST_CONSULT_HTML)
+            LAST_CONSULT_HISTORY.append({
+                "user": prompt,
+                "assistant": "",
+                "assistant_text": re.sub(r'DOCUMENT_DATA:.*', '', result_reply, flags=re.DOTALL).strip(),
+            })
             self.respond_html(render_index(LAST_DATA, ""))
             return
         if self.path == "/use_consult_data":
             if LAST_DATA is None:
                 LAST_DATA = default_data()
-            self.respond_html(render_index(LAST_DATA, "書類データをフォームに反映しました。内容を確認してPDFを作成してください。"))
+            _tmpl_names = {"1": "テンプレート1（シンプル）", "2": "テンプレート2（ネイビー×ゴールド）", "3": "テンプレート3（白黒実務版）"}
+            _sel_tmpl = str(LAST_DATA.get("selected_template", "2"))
+            _tmpl_label = _tmpl_names.get(_sel_tmpl, "テンプレート2（ネイビー×ゴールド）")
+            self.respond_html(render_index(LAST_DATA, f"書類データをフォームに反映しました。{_tmpl_label}でPDFを作成してください。"))
             return
         if self.path == "/reset_consult":
             LAST_CONSULT_HISTORY = []
