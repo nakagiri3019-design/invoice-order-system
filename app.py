@@ -1645,15 +1645,31 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
     _bs_sm = "background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:10px 18px;margin:4px;font-weight:700;cursor:pointer;font-size:14px"
 
     if CONSULT_STEP == 0:
-        btns = "".join([
-            f'<form method="post" action="/consult_step">'
-            f'<input type="hidden" name="step_action" value="profile">'
-            f'<input type="hidden" name="profile_id" value="{esc(p.get("id",""))}">'
-            f'<button type="submit" style="{_bs}">{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</button>'
-            f'</form>'
-            for p in profiles
-        ])
-        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① 発行元情報を選んでください</p>{btns}</div>'
+        if len(profiles) == 1:
+            p0 = profiles[0]
+            p0_id = esc(p0.get("id", ""))
+            p0_name = esc(p0.get("name", ""))
+            p0_company = esc(p0.get("issuer", {}).get("company", ""))
+            body = (
+                f'<div style="background:#eef7ee;border:1px solid #b7dfb7;border-radius:10px;padding:14px;margin:8px 0">'
+                f'<span style="font-weight:700">✅ {p0_name}（{p0_company}）を選択中</span>'
+                f'</div>'
+                f'<form method="post" action="/consult_step">'
+                f'<input type="hidden" name="step_action" value="profile">'
+                f'<input type="hidden" name="profile_id" value="{p0_id}">'
+                f'<button type="submit" style="{_bs}">次へ進む →</button>'
+                f'</form>'
+            )
+        else:
+            body = "".join([
+                f'<form method="post" action="/consult_step">'
+                f'<input type="hidden" name="step_action" value="profile">'
+                f'<input type="hidden" name="profile_id" value="{esc(p.get("id",""))}">'
+                f'<button type="submit" style="{_bs}">{esc(p.get("name",""))}（{esc(p.get("issuer",{}).get("company",""))}）</button>'
+                f'</form>'
+                for p in profiles
+            ])
+        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① 発行元情報を選んでください</p>{body}</div>'
 
     elif CONSULT_STEP == 1:
         sel_p = next((p for p in profiles if p.get("id") == CONSULT_PROFILE_ID), profiles[0] if profiles else {})
@@ -1790,10 +1806,14 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
         + f'\n<details><summary>現在の保存内容を見る</summary><pre>{cfg_pre}</pre></details>'
     )
     if CREATION_MODE == "ai":
+        if len(profiles) == 1:
+            _status_label = f'✅ {_ai_pname}（{_ai_company}）を選択中'
+        else:
+            _status_label = f'発行元：{_ai_pname}（{_ai_company}）'
         issuer_section = (
             f'<div style="background:#f5f5f5;border-radius:10px;padding:12px;margin-bottom:12px;'
             f'display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-            f'<span style="font-size:13px;color:#555">発行元：{_ai_pname}（{_ai_company}）</span>'
+            f'<span style="font-size:13px;color:#555">{_status_label}</span>'
             f'<details style="display:inline">'
             f'<summary style="cursor:pointer;font-size:13px;color:#1A2B4C;font-weight:600">発行元情報を変更・追加する</summary>'
             f'{_issuer_inner}'
