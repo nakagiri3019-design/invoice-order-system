@@ -1401,9 +1401,17 @@ def money_plain(n: int) -> str:
 def extract_file_content(filename: str, data: bytes) -> Dict[str, Any]:
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
 
-    if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+    if ext in ("png", "jpg", "jpeg"):
+        from image_reader import read_image_with_openai
+        result = read_image_with_openai(filename, data)
+        if result["text"]:
+            content = f"添付画像「{filename}」から読み取った帳票情報:\n{result['text']}"
+            return {"type": "text", "content": content, "media_type": "", "error": result["error"]}
+        return {"type": "text", "content": "", "media_type": "", "error": result["error"]}
+
+    elif ext in ("gif", "webp"):
         import base64
-        media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
+        media_type = {"gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
         return {"type": "image", "content": base64.standard_b64encode(data).decode(), "media_type": media_type, "error": ""}
 
     elif ext == "pdf":
