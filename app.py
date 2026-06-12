@@ -76,6 +76,7 @@ CONSULT_STEP: int = 0
 CONSULT_PROFILE_ID: str = ""
 CONSULT_DOC_TYPE: str = "invoice"
 CONSULT_TEMPLATE: str = "2"
+CREATION_MODE: str = "ai"
 FIELD_LABELS: Dict[str, str] = {
     "client": "宛先",
     "due_date": "支払期日",
@@ -1799,8 +1800,20 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 </style></head><body>
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
-{_render_consult_card(cfg)}
-<form method="post" action="/create_pdf1" class="card" id="main-form">
+<div class="card" style="padding:14px 20px">
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <form method="post" action="/set_mode" style="flex:1;min-width:160px">
+      <input type="hidden" name="mode" value="ai">
+      <button type="submit" style="width:100%;padding:14px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;{"background:#1A2B4C;color:#fff;border:2px solid #1A2B4C;box-shadow:0 3px 10px rgba(26,43,76,.3)" if CREATION_MODE=="ai" else "background:#fff;color:#1A2B4C;border:2px solid #1A2B4C"}">🤖 AIと相談しながら作成</button>
+    </form>
+    <form method="post" action="/set_mode" style="flex:1;min-width:160px">
+      <input type="hidden" name="mode" value="manual">
+      <button type="submit" style="width:100%;padding:14px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;{"background:#1A2B4C;color:#fff;border:2px solid #1A2B4C;box-shadow:0 3px 10px rgba(26,43,76,.3)" if CREATION_MODE=="manual" else "background:#fff;color:#1A2B4C;border:2px solid #1A2B4C"}">✏️ 手入力で作成</button>
+    </form>
+  </div>
+</div>
+{"" if CREATION_MODE != "ai" else _render_consult_card(cfg)}
+<form method="post" action="/create_pdf1" class="card" id="main-form" {"" if CREATION_MODE == "manual" else 'style="display:none"'}>
 <h2>手入力でPDF作成</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
 <div class="grid">
@@ -1960,6 +1973,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         global LAST_DATA, LAST_CONSULT_HTML, LAST_CONSULT_DATA, LAST_CONSULT_HISTORY
         global CONSULT_STEP, CONSULT_PROFILE_ID, CONSULT_DOC_TYPE, CONSULT_TEMPLATE
+        global CREATION_MODE
         # パスからクエリ文字列を除去
         self.path = self.path.split("?")[0]
         if self.path == "/save_config":
@@ -1980,6 +1994,13 @@ class Handler(BaseHTTPRequestHandler):
             if LAST_DATA is None:
                 LAST_DATA = default_data()
             self.respond_html(render_index(LAST_DATA, "プロフィールを削除しました。"))
+            return
+        if self.path == "/set_mode":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8")
+            params_m = urllib.parse.parse_qs(raw)
+            CREATION_MODE = params_m.get("mode", ["ai"])[0]
+            self.respond_html(render_index(LAST_DATA or default_data()))
             return
         if self.path == "/consult_step":
             length = int(self.headers.get("Content-Length", "0"))
