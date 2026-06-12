@@ -1809,21 +1809,28 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
 <input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
 <button type="submit" style="background:#a33">削除</button>
 </form>"""
-        profile_cards += f"""<details>
-<summary>{esc(p.get('name','(名称未設定)'))}</summary>
-<form method="post" action="/save_config" enctype="multipart/form-data">
+        profile_cards += f"""<div style='border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:10px'>
+  <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>
+    <div>
+      <span style='font-weight:700'>{esc(p.get('name','(名称未設定)'))}</span>
+      <span style='color:#666;font-size:13px;margin-left:8px'>{esc(p.get('issuer',{}).get('company',''))}</span>
+    </div>
+    <details>
+      <summary style='cursor:pointer;font-size:13px;color:#1A2B4C'>編集</summary>
+      <form method="post" action="/save_config" enctype="multipart/form-data">
 <input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
 <label>管理用の名前<span style='color:#e53935'> *</span></label><input name="profile_name" value="{esc(p.get('name',''))}">
 {_profile_fields_html(p)}
 <br><button type="submit">保存</button>
 </form>
 {delete_form}
-</details>"""
+    </details>
+  </div>
+</div>"""
     _open_attr = "open" if open_issuer_form else ""
-    new_profile_card = f"""<details {_open_attr}>
-<summary>＋ 新しい発行元情報を追加</summary>
+    new_profile_card = f"""<details id='new-issuer-form' {_open_attr}>
+<summary style='cursor:pointer;color:#1A2B4C;font-weight:700;padding:8px 0'>＋ 新しい発行元情報を追加</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
-<h3 style='margin:0 0 8px'>新しい発行元情報を登録</h3>
 <p style='background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;font-size:13px;margin-bottom:16px'>書類に表示する発行元情報です。<br>会員登録ではありません。</p>
 <input type="hidden" name="profile_id" value="">
 <label>管理用の名前<span style='color:#e53935'> *</span></label>
@@ -1853,8 +1860,10 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
     )
     _full_issuer_card = (
         f'<div id="issuer-section" class="card"><h2>発行元情報</h2>'
-        f'<p class="sub">これはログイン用の会員登録ではありません。請求書・見積書・発注書・納品書に表示する発行元会社情報です。複数の会社・ブランドを登録して切り替えられます。</p>'
-        f'{_issuer_inner}</div>'
+        f'<p class="sub">請求書・見積書・発注書・納品書に表示される会社情報です。会員登録ではありません。</p>'
+        f'{profile_cards}'
+        f'<hr style="border:0;border-top:1px solid #eee;margin:16px 0">'
+        f'{new_profile_card}</div>'
     )
     if CREATION_MODE == "ai":
         if len(profiles) == 1:
