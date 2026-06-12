@@ -1617,25 +1617,27 @@ def _profile_fields_html(p: Dict[str, Any]) -> str:
     bank = p.get("bank", {})
     seal = p.get("seal", {})
     seal_checked = "checked" if seal.get("enabled", True) else ""
+    _req = "<span style='color:#e53935'> *</span>"
+    _opt = "<span style='color:#888;font-size:11px'>（任意）</span>"
     return f"""<h4>発行元情報</h4><div class="grid">
-<div><label>会社名</label><input name="issuer_company" value="{esc(issuer.get('company',''))}"></div>
-<div><label>代表者名</label><input name="issuer_representative" value="{esc(issuer.get('representative',''))}"></div>
-<div><label>郵便番号</label><input name="issuer_postal" value="{esc(issuer.get('postal',''))}"></div>
-<div><label>住所</label><input name="issuer_address" value="{esc(issuer.get('address',''))}"></div>
-<div><label>電話番号</label><input name="issuer_tel" value="{esc(issuer.get('tel',''))}"></div>
-<div><label>メール</label><input name="issuer_email" value="{esc(issuer.get('email',''))}"></div>
-<div><label>インボイス登録番号</label><input name="issuer_invoice_no" value="{esc(issuer.get('invoice_no',''))}"></div>
+<div><label>会社名{_req}</label><input name="issuer_company" value="{esc(issuer.get('company',''))}"></div>
+<div><label>代表者名{_opt}</label><input name="issuer_representative" value="{esc(issuer.get('representative',''))}"></div>
+<div><label>郵便番号{_opt}</label><input name="issuer_postal" value="{esc(issuer.get('postal',''))}"></div>
+<div><label>住所{_req}</label><input name="issuer_address" value="{esc(issuer.get('address',''))}"></div>
+<div><label>電話番号{_opt}</label><input name="issuer_tel" value="{esc(issuer.get('tel',''))}"></div>
+<div><label>メール{_opt}</label><input name="issuer_email" value="{esc(issuer.get('email',''))}"></div>
+<div><label>インボイス登録番号{_opt}</label><input name="issuer_invoice_no" value="{esc(issuer.get('invoice_no',''))}"></div>
 </div>
 <h4>振込先</h4><div class="grid">
-<div><label>銀行名</label><input name="bank_name" value="{esc(bank.get('bank_name',''))}"></div>
-<div><label>支店名</label><input name="bank_branch" value="{esc(bank.get('branch',''))}"></div>
-<div><label>口座種別</label><input name="bank_account_type" value="{esc(bank.get('account_type',''))}"></div>
-<div><label>口座番号</label><input name="bank_account_no" value="{esc(bank.get('account_no',''))}"></div>
-<div><label>口座名義</label><input name="bank_account_name" value="{esc(bank.get('account_name',''))}"></div>
+<div><label>銀行名{_opt}</label><input name="bank_name" value="{esc(bank.get('bank_name',''))}"></div>
+<div><label>支店名{_opt}</label><input name="bank_branch" value="{esc(bank.get('branch',''))}"></div>
+<div><label>口座種別{_opt}</label><input name="bank_account_type" value="{esc(bank.get('account_type',''))}"></div>
+<div><label>口座番号{_opt}</label><input name="bank_account_no" value="{esc(bank.get('account_no',''))}"></div>
+<div><label>口座名義{_opt}</label><input name="bank_account_name" value="{esc(bank.get('account_name',''))}"></div>
 </div>
 <h4>角印</h4>
 <label><input type="checkbox" name="seal_enabled" value="1" {seal_checked} style="width:auto"> 角印を表示する</label>
-<label>角印画像（PNG/JPG）</label><input type="file" name="seal_file" accept="image/png,image/jpeg">
+<label>角印画像（PNG/JPG）{_opt}</label><input type="file" name="seal_file" accept="image/png,image/jpeg">
 <p class="sub">角印画像をアップロードすると、発行元付近の固定位置に配置されます。未アップロードの場合は仮の角印枠を表示します。</p>"""
 
 
@@ -1811,26 +1813,25 @@ def render_index(data: Dict[str, Any], message: str = "", open_issuer_form: bool
 <summary>{esc(p.get('name','(名称未設定)'))}</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
 <input type="hidden" name="profile_id" value="{esc(p.get('id',''))}">
-<label>表示名</label><input name="profile_name" value="{esc(p.get('name',''))}">
+<label>管理用の名前<span style='color:#e53935'> *</span></label><input name="profile_name" value="{esc(p.get('name',''))}">
 {_profile_fields_html(p)}
 <br><button type="submit">保存</button>
 </form>
 {delete_form}
 </details>"""
     _open_attr = "open" if open_issuer_form else ""
-    _issuer_form_note = (
-        "<p style='background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px'>"
-        "書類に表示する発行元情報です。<br>会員登録ではありません。"
-        "</p>"
-        if open_issuer_form else ""
-    )
     new_profile_card = f"""<details {_open_attr}>
 <summary>＋ 新しい発行元情報を追加</summary>
 <form method="post" action="/save_config" enctype="multipart/form-data">
-{_issuer_form_note}<input type="hidden" name="profile_id" value="">
-<label>表示名</label><input name="profile_name" placeholder="例：A社用">
+<h3 style='margin:0 0 8px'>新しい発行元情報を登録</h3>
+<p style='background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px;font-size:13px;margin-bottom:16px'>書類に表示する発行元情報です。<br>会員登録ではありません。</p>
+<input type="hidden" name="profile_id" value="">
+<label>管理用の名前<span style='color:#e53935'> *</span></label>
+<p style='font-size:11px;color:#888;margin:2px 0 8px'>発行元を選ぶときに表示される名前です。PDFには会社名が表示されます。</p>
+<input name="profile_name" placeholder="例：アークラボ用、個人事業用">
+<p style='font-size:12px;color:#666;background:#f5f5f5;padding:8px;border-radius:6px;margin:8px 0'>💡 請求書番号は任意です。未入力の場合はAI相談時に自動採番されます。</p>
 {_profile_fields_html({})}
-<br><button type="submit">新規プロフィールとして追加</button>
+<br><button type="submit">発行元情報を保存する</button>
 </form>
 </details>"""
     t2_note = "ReportLab純正・WeasyPrint不要・Render対応"
