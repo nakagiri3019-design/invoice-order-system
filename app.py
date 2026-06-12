@@ -1645,7 +1645,25 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
     _bs_sm = "background:#fff;border:2px solid #1A2B4C;color:#1A2B4C;border-radius:10px;padding:10px 18px;margin:4px;font-weight:700;cursor:pointer;font-size:14px"
 
     if CONSULT_STEP == 0:
-        if len(profiles) == 1:
+        if len(profiles) == 0:
+            # パターンA：未登録
+            body = (
+                '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:16px;margin:12px 0">'
+                '<p style="margin:0 0 8px;font-weight:700">発行元情報とは？</p>'
+                '<p style="margin:0;font-size:13px;color:#555">これはログイン用の会員登録ではありません。<br>'
+                '請求書・見積書・発注書・納品書に表示される会社名、住所、振込先情報です。</p>'
+                '</div>'
+                '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'
+                '<a href="#issuer-section" style="background:#1A2B4C;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">📝 発行元情報を登録する</a>'
+                '<form method="post" action="/consult_step" style="display:inline">'
+                '<input type="hidden" name="step_action" value="skip_issuer">'
+                '<button type="submit" style="background:#888;color:#fff;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;font-weight:700">あとで登録する</button>'
+                '</form>'
+                '</div>'
+            )
+            return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① まず、請求書に表示する発行元情報を登録しましょう。</p>{body}</div>'
+        elif len(profiles) == 1:
+            # パターンB：1件のみ
             p0 = profiles[0]
             p0_id = esc(p0.get("id", ""))
             p0_name = esc(p0.get("name", ""))
@@ -1660,7 +1678,9 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
                 f'<button type="submit" style="{_bs}">次へ進む →</button>'
                 f'</form>'
             )
+            return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① 発行元情報を選んでください</p>{body}</div>'
         else:
+            # パターンC：2件以上
             body = "".join([
                 f'<form method="post" action="/consult_step">'
                 f'<input type="hidden" name="step_action" value="profile">'
@@ -1669,7 +1689,7 @@ def _render_consult_card(cfg: Dict[str, Any]) -> str:
                 f'</form>'
                 for p in profiles
             ])
-        return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① 発行元情報を選んでください</p>{body}</div>'
+            return f'<div class="card"><h2>AI相談チャット</h2><p class="sub">① どの発行元で作成しますか？</p>{body}</div>'
 
     elif CONSULT_STEP == 1:
         sel_p = next((p for p in profiles if p.get("id") == CONSULT_PROFILE_ID), profiles[0] if profiles else {})
@@ -1821,7 +1841,7 @@ def render_index(data: Dict[str, Any], message: str = "") -> str:
         )
     else:
         issuer_section = (
-            f'<div class="card"><h2>発行元情報</h2>'
+            f'<div id="issuer-section" class="card"><h2>発行元情報</h2>'
             f'<p class="sub">これはログイン用の会員登録ではありません。請求書・見積書・発注書・納品書に表示する発行元会社情報です。複数の会社・ブランドを登録して切り替えられます。</p>'
             f'{_issuer_inner}</div>'
         )
@@ -2062,6 +2082,8 @@ class Handler(BaseHTTPRequestHandler):
                     LAST_DATA["doc_type"] = CONSULT_DOC_TYPE
                     LAST_DATA["profile_id"] = CONSULT_PROFILE_ID
                     LAST_DATA["selected_template"] = CONSULT_TEMPLATE
+            elif step_action == "skip_issuer":
+                CONSULT_STEP = 1
             self.respond_html(render_index(LAST_DATA or default_data()))
             return
         if self.path == "/consult":
