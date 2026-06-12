@@ -1597,7 +1597,7 @@ def make_consultation_html(
       {summary}
       <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <form method="post" action="/use_consult_data" style="display:inline">
-          <button type="submit">フォームに反映してPDF作成へ</button>
+          <button type="submit">この内容でPDF作成へ</button>
         </form>
         {status_badge}
       </div>
@@ -1751,7 +1751,7 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 </style></head><body>
 <header><h1>帳票作成システム v16</h1><div class="sub">AI相談入力欄 + テンプレート1・2ボタン選択 + 発行元・振込先・角印保存</div></header><main>
 {f'<div class="flash">{esc(message)}</div>' if message else ''}
-<div class="card"><h2>AI相談チャット</h2><p class="sub">話すように入力するだけで帳票データを作成できます。複数ターンの会話で情報を補完していきます。</p>
+<div class="card"><h2>AI相談チャット</h2><p class="sub">作りたい内容をそのまま書いてください。足りない情報はAIが順番に質問します。</p>
 <form method="post" action="/consult" enctype="multipart/form-data">
 <div class="grid" style="margin-bottom:10px">
   <div><label>発行元プロフィール</label><select name="consult_profile_id">{consult_profile_options}</select></div>
@@ -1770,13 +1770,13 @@ button{{background:#1A2B4C;color:#fff;border:0;border-radius:10px;padding:12px 1
 <label style="margin-top:8px">参考ファイルを添付（PDF・画像・Excelなど）</label>
 <input type="file" name="upload_file" multiple>
 <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-  <button type="submit">送信</button>
-  <form method="post" action="/use_consult_data" style="display:inline"><button type="submit" style="background:#2a6040">フォームに反映してPDF作成へ</button></form>
+  <button type="submit">相談する</button>
+  <form method="post" action="/use_consult_data" style="display:inline"><button type="submit" style="background:#2a6040">この内容でPDF作成へ</button></form>
   <form method="post" action="/reset_consult" style="display:inline"><button type="submit" style="background:#888">会話をリセット</button></form>
 </div>
 </form></div>
 <form method="post" action="/create_pdf1" class="card" id="main-form">
-<h2>固定テンプレートに流し込む</h2>
+<h2>手入力でPDF作成</h2>
 <p class="sub">下の「PDF作成」ボタンでテンプレートを直接選択できます。フォームの内容を確認してからボタンを押してください。</p>
 <div class="grid">
 <div><label>発行元プロフィール</label><select name="profile_id">{profile_options}</select></div><div><label>書類種別</label><input type="hidden" name="doc_type" id="main_doc_type_val" value="{esc(main_doc_type_sel)}"><div class="sel-btn-group" id="main_doc_btns">{main_doc_buttons}</div></div><div><label>書類番号</label><input name="doc_no" value="{esc(data.get('doc_no',''))}"></div><div><label>宛先</label><input name="client" value="{esc(data.get('client',''))}"></div><div><label>発行日</label><input name="issue_date" value="{esc(data.get('issue_date',''))}"></div><div><label>件名</label><input name="subject" value="{esc(data.get('subject',''))}"></div><div><label>税率（%）</label><input name="tax_rate" value="{esc(data.get('tax_rate','10'))}"></div><div><label>支払期日</label><input name="due_date" value="{esc(data.get('due_date',''))}"></div><div><label>支払方法</label><input name="payment_method" value="{esc(data.get('payment_method',''))}"></div><div><label>納期/納品日</label><input name="delivery_date" value="{esc(data.get('delivery_date',''))}"></div><div><label>有効期限</label><input name="valid_until" value="{esc(data.get('valid_until',''))}"></div><div><label>支払条件</label><input name="payment_terms" value="{esc(data.get('payment_terms',''))}"></div><div><label>納品場所</label><input name="delivery_place" value="{esc(data.get('delivery_place',''))}"></div></div><label>備考</label><textarea name="notes">{esc(data.get('notes',''))}</textarea><label>品目</label><table class="items"><tr><th>品目</th><th>数量</th><th>単位</th><th>単価</th></tr>{rows}</table>
