@@ -1398,9 +1398,49 @@ def money_plain(n: int) -> str:
     return f"{int(n):,}円"
 
 
-def extract_file_content(filename: str, data: bytes) -> str | None:
-    """将来的なPDF/画像読み取り用スタブ。現在は未対応。"""
-    raise NotImplementedError
+def extract_file_content(filename: str, data: bytes) -> Dict[str, Any]:
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+
+    if ext in ("png", "jpg", "jpeg", "gif", "webp"):
+        import base64
+        media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
+        return {"type": "image", "content": base64.standard_b64encode(data).decode(), "media_type": media_type, "error": ""}
+
+    elif ext == "pdf":
+        try:
+            import pdfplumber, io
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages[:5])
+            return {"type": "text", "content": text[:3000], "media_type": "", "error": ""}
+        except Exception as e:
+            return {"type": "text", "content": "", "media_type": "", "error": f"PDF読み取りエラー: {e}"}
+
+    elif ext in ("xlsx", "xls"):
+        try:
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+            rows = []
+            for ws in wb.worksheets[:2]:
+                for row in ws.iter_rows(max_row=100, values_only=True):
+                    vals = [str(v) for v in row if v is not None]
+                    if vals:
+                        rows.append("\t".join(vals))
+            return {"type": "text", "content": "\n".join(rows)[:3000], "media_type": "", "error": ""}
+        except Exception as e:
+            return {"type": "text", "content": "", "media_type": "", "error": f"Excel読み取りエラー: {e}"}
+
+    elif ext == "csv":
+        try:
+            import csv, io
+            text = data.decode("utf-8", errors="replace")
+            reader = csv.reader(io.StringIO(text))
+            rows = ["\t".join(row) for row in reader][:100]
+            return {"type": "text", "content": "\n".join(rows)[:3000], "media_type": "", "error": ""}
+        except Exception as e:
+            return {"type": "text", "content": "", "media_type": "", "error": f"CSV読み取りエラー: {e}"}
+
+    else:
+        return {"type": "unsupported", "content": "", "media_type": "", "error": f"このファイル形式（.{ext}）は現在読み取り非対応です。内容を手動でテキスト入力欄に貼り付けてください。"}
 
 
 def consult_ai(
@@ -1409,6 +1449,7 @@ def consult_ai(
     conversation_history: list | None = None,
     profile: Dict[str, Any] | None = None,
     doc_type: str = "invoice",
+    file_contents: list | None = None,
 ) -> Dict[str, Any]:
     """会話型帳票作成エンジン。WebでもLINEでも同じ関数を使う。"""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -1477,7 +1518,24 @@ def consult_ai(
         messages.append({"role": "user", "content": turn.get("user", "")})
         if turn.get("assistant"):
             messages.append({"role": "assistant", "content": turn["assistant"]})
-    messages.append({"role": "user", "content": text.strip()})
+
+    # 今回のユーザーメッセージ（ファイル添付がある場合はリスト形式）
+    user_content: Any = []
+    if text:
+        user_content.append({"type": "text", "text": text.strip()})
+    for fc in (file_contents or []):
+        fn = fc["filename"]
+        r = fc["result"]
+        if r["type"] == "image":
+            user_content.append({"type": "text", "text": f'添付画像ファイル「{fn}」の内容から、帳票作成に必要な情報（宛先・発行元・書類種別・品目・数量・単価・金額・消費税・合計・支払期日・備考）を抽出してください。'})
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": r["media_type"], "data": r["content"]}})
+        elif r["type"] == "text" and r["content"]:
+            user_content.append({"type": "text", "text": f'添付ファイル「{fn}」の内容：\n{r["content"]}'})
+        elif r.get("error"):
+            user_content.append({"type": "text", "text": f'添付ファイル「{fn}」：{r["error"]}'})
+    if not user_content:
+        user_content = text or "（添付ファイルのみ）"
+    messages.append({"role": "user", "content": user_content})
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
@@ -1563,20 +1621,20 @@ def _doc_summary_html(data: Dict[str, Any]) -> str:
 
 def make_consultation_html(
     prompt: str,
-    filenames: List[str] | None = None,
+    file_contents: list | None = None,
     profile: Dict[str, Any] | None = None,
     doc_type: str = "invoice",
 ) -> str:
     global LAST_DATA, LAST_CONSULT_DATA
-    filenames = filenames or []
+    file_contents = file_contents or []
 
     user_text = (prompt or "").strip()
     file_warn = ""
-    if filenames:
-        user_text += "\n\n添付ファイルあり: " + "、".join(filenames)
-        file_warn = "<p style='color:#888;font-size:13px'>（添付ファイルの内容は現在自動読み取り非対応です。内容を手動で入力欄に貼り付けてください）</p>"
+    errors = [fc["result"].get("error", "") for fc in file_contents if fc["result"].get("error")]
+    if errors:
+        file_warn = "<p style='color:#888;font-size:13px'>" + " / ".join(errors) + "</p>"
 
-    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY, profile, doc_type)
+    result = consult_ai(user_text, LAST_DATA if LAST_DATA else None, LAST_CONSULT_HISTORY, profile, doc_type, file_contents)
 
     if result["doc_data"]:
         LAST_CONSULT_DATA = result["doc_data"]
@@ -2189,8 +2247,14 @@ class Handler(BaseHTTPRequestHandler):
             raw_bytes = self.rfile.read(length)
             fields = parse_multipart(raw_bytes, self.headers.get("Content-Type", ""))
             prompt = fields.get("prompt", {}).get("value", "").strip()
-            filenames = [fv.get("filename", "") for fk, fv in fields.items() if fv.get("filename")]
-            if not prompt:
+            file_contents = []
+            for field_name, field_info in fields.items():
+                if field_name == "upload_file" and field_info.get("filename"):
+                    fname = field_info["filename"]
+                    fdata = field_info.get("data", b"")
+                    if fdata:
+                        file_contents.append({"filename": fname, "result": extract_file_content(fname, fdata)})
+            if not prompt and not file_contents:
                 self.respond_html(render_index(LAST_DATA or default_data(), "入力が空です。テキストを入力してから送信してください。"))
                 return
             cfg = load_config()
@@ -2201,7 +2265,7 @@ class Handler(BaseHTTPRequestHandler):
             LAST_DATA["profile_id"] = CONSULT_PROFILE_ID
             LAST_DATA["selected_profile_id"] = CONSULT_PROFILE_ID
             LAST_DATA["selected_template"] = CONSULT_TEMPLATE
-            LAST_CONSULT_HTML = make_consultation_html(prompt, filenames, consult_profile, CONSULT_DOC_TYPE)
+            LAST_CONSULT_HTML = make_consultation_html(prompt, file_contents, consult_profile, CONSULT_DOC_TYPE)
             result_reply = re.sub(r'<[^>]+>', '', LAST_CONSULT_HTML)
             LAST_CONSULT_HISTORY.append({
                 "user": prompt,
