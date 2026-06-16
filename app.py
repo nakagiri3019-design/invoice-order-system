@@ -99,31 +99,43 @@ def register_fonts() -> None:
     global FONTS_READY
     if FONTS_READY:
         return
+
+    # 優先: fonts/ フォルダの Noto Sans JP（TTFont で PDF に埋め込み）
+    regular = find_font_file([
+        str(BASE_DIR / "fonts" / "NotoSansJP-Regular.ttf"),
+        # Linux (Render) フォールバック
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJKjp-Regular.otf",
+    ])
+    bold = find_font_file([
+        str(BASE_DIR / "fonts" / "NotoSansJP-Bold.ttf"),
+        # Linux (Render) フォールバック
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJKjp-Bold.otf",
+    ])
+
+    if regular:
+        pdfmetrics.registerFont(TTFont(FONT_NAME, regular))
+        pdfmetrics.registerFont(TTFont(FONT_BOLD, bold or regular))
+        globals()["FONT_MIN"] = FONT_BOLD
+        FONTS_READY = True
+        return
+
+    # 最終フォールバック: CID フォント（埋め込み不可・Render 環境向け）
     try:
-        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))  # ゴシック
-        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))      # 明朝
-        globals()["FONT_NAME"] = "HeiseiKakuGo-W5"   # 本文・品目・金額はゴシック
-        globals()["FONT_BOLD"] = "HeiseiKakuGo-W5"   # 太字ゴシック
-        globals()["FONT_MIN"]  = "HeiseiMin-W3"       # タイトルのみ明朝
+        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
+        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
+        globals()["FONT_NAME"] = "HeiseiKakuGo-W5"
+        globals()["FONT_BOLD"] = "HeiseiKakuGo-W5"
+        globals()["FONT_MIN"]  = "HeiseiMin-W3"
         FONTS_READY = True
         return
     except Exception:
         pass
 
-    # Fallback（明朝が使えない環境ではゴシックで代用）
-    regular = find_font_file([
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ])
-    bold = find_font_file([
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        regular or "",
-    ])
-    if not regular:
-        raise RuntimeError("Font not found. Install Japanese CID fonts or DejaVu Sans.")
-    pdfmetrics.registerFont(TTFont(FONT_NAME, regular))
-    pdfmetrics.registerFont(TTFont(FONT_BOLD, bold or regular))
-    globals()["FONT_MIN"] = FONT_BOLD   # fallback時はゴシックで代用
-    FONTS_READY = True
+    raise RuntimeError("日本語フォントが見つかりません。fonts/ フォルダを確認してください。")
 
 
 def load_config() -> Dict[str, Any]:
